@@ -23,8 +23,8 @@ self.addEventListener('notificationclick', e => {
   }));
 });
 
-// IMPORTANTE: troque o número da versão (v7 → v8...) sempre que publicar arquivos novos; isso apaga o cache antigo dos aparelhos.
-const V = 'emporio-medonca-v7', SHELL = ['./', 'index.html', 'admin.html', 'style.css', 'app.js', 'extras.js', 'pagamentos.js', 'camera.js', 'totem.js', 'admin.js', 'admin-extras.js', 'catalogo-admin.js', 'config.js', 'pix.js', 'logo.png', 'logo-emblem.png', 'logo-full.png', 'icon-192.png', 'icon-512.png', 'badge.png'];
+// IMPORTANTE: troque o número da versão (v8 → v9...) sempre que publicar arquivos novos; isso apaga o cache antigo dos aparelhos.
+const V = 'emporio-medonca-v8', SHELL = ['./', 'index.html', 'admin.html', 'style.css', 'app.js', 'extras.js', 'pagamentos.js', 'camera.js', 'totem.js', 'admin.js', 'admin-extras.js', 'catalogo-admin.js', 'fotos-admin.js', 'config.js', 'pix.js', 'logo.png', 'logo-emblem.png', 'logo-full.png', 'icon-192.png', 'icon-512.png', 'badge.png'];
 self.addEventListener('install', e => {
   // Se algum arquivo falhar, não derruba a instalação do service worker (o push continua funcionando)
   // cache: 'reload' busca direto no servidor, ignorando o cache do navegador (senão o cache novo já nasceria com arquivo velho)
