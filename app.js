@@ -294,7 +294,7 @@ function renderCliente() {
   const b = montarCliente(), nomeGoogle = user && user.displayName ? user.displayName.trim() : '';
   if (perfil && perfil.nome) {
     const nome = (perfil.nome + ' ' + (perfil.sobrenome || '')).trim();
-    b.innerHTML = '<label>Pedido em nome de</label><div class="cli"><span><b>' + esc(nome) + '</b>' + (perfil.tel ? '<br><small>WhatsApp ' + esc(fmtTel(perfil.tel)) + '</small>' : '') + '</span><a onclick="editarDados();abrir(\'pConta\')">Alterar</a></div>';
+    b.innerHTML = '<label>Pedido em nome de</label><div class="cli"><span><b>' + esc(nome) + '</b>' + (perfil.tel ? '<br><small>WhatsApp ' + esc(fmtTel(perfil.tel)) + '</small>' : '') + '</span><span style="display:flex;gap:14px"><a onclick="editarDados();abrir(\'pConta\')">Alterar</a><a onclick="sairTotem()">Sair</a></span></div>';
   } else {
     b.innerHTML = '<label>Pedido em nome de</label><div class="cli"><span>' + (nomeGoogle ? '<b>' + esc(nomeGoogle) + '</b><br>' : '') + '<small>Falta confirmar seu nome e WhatsApp para finalizar.</small></span><a onclick="abrir(\'pConta\')">Preencher</a></div>';
   }
