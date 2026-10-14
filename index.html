@@ -1,0 +1,41 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Emporio Medonça</title><link rel="icon" href="logo.png"><link rel="manifest" href="manifest.json"><meta name="description" content="Emporio Medonça"><meta name="theme-color" content="#F5F5F7"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="icon-192.png"><link rel="stylesheet" href="style.css">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script></head><body>
+<header>
+<div class="hrow"><a class="brand" href="./"><img src="logo-emblem.png" alt="Emporio Medonça"><span class="logo-t pt">Emporio Medonça</span></a>
+<form class="busca" onsubmit="return false"><input id="q" type="search" placeholder="Buscar no cardápio" autocomplete="off" oninput="busca(this.value)"><button type="button" aria-label="Buscar" onclick="$('q').focus()"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg></button></form>
+<div class="hacts"><button class="hbtn" onclick="abrir('pConta')"><span class="hico"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg></span><span class="htx"><b id="bConta">Entrar</b><small>Minha conta</small></span></button>
+<button class="hbtn" onclick="abrir('pCarrinho')"><span class="hico"><svg viewBox="0 0 24 24"><path d="M5 8h14l-1 12H6L5 8z"/><path d="M9 8a3 3 0 0 1 6 0"/></svg></span><span class="htx"><b>Sacola (<span id="qtd">0</span>)</b><small id="sacTot">R$ 0,00</small></span></button></div></div>
+<div class="hmenu"><div class="mw"><div class="mi"><button class="mlink" onclick="toggleMenuCats(event)">Cardápio ▾</button><div class="mdrop" id="menuCats"></div></div>
+<a class="mlink" href="#" onclick="irTopo();return false">Início</a><a class="mlink" href="#produtos" onclick="irProdutos();return false">Cardápio</a><a class="mlink" href="#" onclick="irContato();return false">Contato</a></div></div>
+</header>
+<div class="hero"><img src="logo-full.png" alt="Emporio Medonça"><p></p></div>
+<div class="rinfo"><div class="rcard"><img class="ravatar" src="logo-emblem.png" alt="Emporio Medonça"><div class="rtx"><h1>Emporio Medonça</h1><div class="rchips" id="rchips"></div></div><div class="status" id="status" role="status" aria-live="polite"></div>
+<button class="rconta" onclick="abrir('pConta')"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>Meus pedidos</button></div></div>
+<div class="sec gal" id="gal" style="display:none"><h2 class="pt" id="galT">GALERIA</h2><div class="gal-wrap"><div class="gal-slider" id="galTr" aria-hidden="true"></div></div></div>
+<div class="sec wide" id="produtos"><div class="crumb">Início › Cardápio</div>
+<div class="ptop"><h2 class="pt">Cardápio</h2><div class="ord"><label for="ord">Ordenar por</label><select id="ord" onchange="ordenar(this.value)"><option value="pad">Padrão</option><option value="menor">Menor preço</option><option value="maior">Maior preço</option><option value="az">Nome (A–Z)</option></select></div></div>
+<nav class="catbar" id="catbar" aria-label="Categorias"></nav>
+<button class="btn o filbtn" onclick="document.getElementById('fil').classList.toggle('on')">Filtrar</button>
+<div class="loja"><aside class="fil" id="fil"><h3>Filtrar por</h3>
+<div class="fg"><h4>Categorias</h4><div id="cats"></div></div>
+<div class="fg"><h4>Preço</h4><div class="prc"><label>De<input id="pMin" type="text" inputmode="decimal" placeholder="0" autocomplete="off" onkeydown="if(event.key==='Enter')aplicarPreco()" onchange="aplicarPreco()"></label><label>Até<input id="pMax" type="text" inputmode="decimal" placeholder="0" autocomplete="off" onkeydown="if(event.key==='Enter')aplicarPreco()" onchange="aplicarPreco()"></label><button type="button" class="prcgo" aria-label="Aplicar filtro de preço" onclick="aplicarPreco()">›</button></div></div>
+<div class="fg"><label class="fck"><input type="checkbox" id="fPromo" onchange="soPromoMuda(this.checked)">Somente promoções</label></div>
+<a class="limpa" href="#" onclick="limparFiltros();return false">Limpar filtros</a></aside>
+<div class="grid" id="grid"></div></div></div>
+
+<button class="cbar" id="cbar" onclick="abrir('pCarrinho')" aria-label="Abrir sacola"><span id="cbarN">0 itens</span><b>Ver sacola</b><span id="cbarT">R$ 0,00</span></button>
+<div class="ov" id="pCarrinho"><div class="pn"><h2 class="pt">SUA SACOLA</h2><div id="itens"></div><p style="margin:16px 0;font-size:18px">Total: <b id="tot">R$ 0,00</b></p>
+<label>Forma de pagamento</label><div class="fp" id="fp"><div data-f="Pix" class="on">Pix</div><div data-f="Cartão">Cartão</div><div data-f="Dinheiro">Dinheiro</div></div>
+<div id="pixBox" style="text-align:center"></div>
+<button class="btn" id="btnFin" style="width:100%" onclick="finalizar()">Finalizar pedido</button><button class="btn o" style="width:100%;margin-top:8px" onclick="fechar()">Continuar escolhendo</button></div></div>
+
+<div class="ov" id="pConta"><div class="pn"><div id="fLogin"><h2 class="pt">SEUS DADOS</h2><p style="color:var(--mut);margin-bottom:14px;font-size:13px">Só precisamos disso para identificar o seu pedido.</p>
+<label>Nome</label><input id="cNome" autocomplete="given-name"><label>Sobrenome</label><input id="cSob" autocomplete="family-name"><label>Telefone / WhatsApp</label><input id="cTel" type="tel" inputmode="tel" placeholder="(85) 99999-8888" autocomplete="tel">
+<button class="btn" style="width:100%" onclick="salvarDados()">Salvar</button></div>
+<div id="fPedidos" style="display:none"><h2 class="pt">MEUS PEDIDOS</h2><div id="meus"></div><button class="btn o" style="width:100%;margin-top:16px" onclick="editarDados()">Editar meus dados</button></div>
+<button class="btn o" style="width:100%;margin-top:8px" onclick="fechar()">Fechar</button></div></div>
+<a class="insta" id="insta" href="#" target="_blank" rel="noopener" style="display:none" aria-label="Instagram"><svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r="1" fill="currentColor" stroke="none"/></svg></a><a class="wapp" onclick="irContato()" aria-label="WhatsApp"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5.05-1.3A10 10 0 1 0 12 2z"/><path fill="#25d366" d="M9 7.2l1.3 2.6-1 1.1c.7 1.400 1.800 2.500 3.300 3.200l1.100-1 2.600 1.300c0 1.100-.9 1.900-1.900 1.900-4.200-.5-7-3.300-7.500-7.500 0-1 .8-1.800 2.100-1.600z"/></svg></a><div class="toast" id="toast"></div><script src="config.js"></script><script src="pix.js"></script><script src="app.js"></script><script src="extras.js"></script><script src="pagamentos.js"></script><script src="camera.js"></script></body></html>

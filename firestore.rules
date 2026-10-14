@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function admin() { return request.auth != null && request.auth.token.email == 'admin@emporiomedonca.com'; }   // mesmo e-mail do config.js
+    function logado() { return request.auth != null; }
+
+    // Vitrine: todos leem, só o admin altera
+    match /produtos/{id} { allow read: if true; allow write: if admin(); }
+
+    // Galeria de fotos do carrossel: todos leem, só o admin altera
+    match /galeria/{id} { allow read: if true; allow write: if admin(); }
+
+    // Ajustes da loja (Pix, frete, bairros, retirada, mensagens, título da galeria...)
+    match /config/loja { allow read: if true; allow write: if admin(); }
+    // Contador do número do pedido: o cliente atualiza ao finalizar o pedido
+    match /config/contador {
+      allow read: if logado();
+      allow create, update: if admin() || (logado() && request.resource.data.n is int && request.resource.data.n >= 0);
+      allow delete: if admin();
+    }
+
+    // Cadastro do cliente e registro de visitas (cada um só mexe no próprio; o admin vê tudo)
+    // O telefone só pode ser gravado no cadastro se estiver reservado em /telefones para o mesmo usuário (um telefone = um cadastro).
+    // Cadastros antigos, sem reserva, continuam funcionando com o telefone que já tinham.
+    match /clientes/{uid} {
+      allow read: if logado() && (request.auth.uid == uid || admin());
+      allow delete: if admin();
+      allow create, update: if admin() || (logado() && request.auth.uid == uid && request.resource.data.tel is string && (
+        getAfter(/databases/$(db)/documents/telefones/$(request.resource.data.tel)).data.uid == request.auth.uid
+        || (resource != null && resource.data.get('tel', null) == request.resource.data.tel)
+      ));
+    }
+    // Telefones já cadastrados (ID do documento = só os números). O cliente consulta um número por vez (get), não consegue listar; só o dono do número altera ou libera.
+    match /telefones/{tel} {
+      allow get: if logado();
+      allow list: if admin();
+      allow create: if logado() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if admin() || (logado() && resource.data.uid == request.auth.uid && (request.method == 'delete' || request.resource.data.uid == request.auth.uid));
+    }
+    match /visitas/{uid} { allow read, write: if logado() && (request.auth.uid == uid || admin()); }
+
+    // Pedidos
+    match /pedidos/{id} {
+      allow create: if admin() || (logado() && request.resource.data.uid == request.auth.uid
+                      && request.resource.data.status in ['Novo', 'Aguardando conferência']);
+      allow read: if logado() && (resource.data.uid == request.auth.uid || admin());
+      allow update, delete: if admin();
+    }
+
+    // Avisos no celular do dono (push) e teste do botão "Testar"
+    match /admTokens/{t} { allow read, write: if admin(); }
+    match /admTestes/{t} { allow read, write: if admin(); }
+  }
+}

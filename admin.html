@@ -1,0 +1,163 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Emporio Medonça · Admin</title><link rel="icon" href="logo.png"><link rel="manifest" href="manifest-admin.json"><meta name="theme-color" content="#F5F5F7"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="icon-192.png"><link rel="stylesheet" href="style.css">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script></head><body class="adm">
+<header><a class="brand" href="admin.html"><img src="logo-emblem.png" alt="Emporio Medonça"><span class="logo-t pt">PAINEL ADMIN</span></a><nav><button class="btn" id="bPush" onclick="ativarPush()">🔔 Ativar avisos</button><button class="btn o" onclick="testarAvisos()">🔧 Testar</button><button class="btn o" onclick="auth.signOut()">Sair</button></nav></header>
+<div class="sec" id="login" style="max-width:380px"><h2 class="pt">ENTRAR</h2><label>Senha</label><input id="s" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')entrarAdmin()"><button class="btn" style="width:100%" onclick="entrarAdmin()">Entrar</button></div>
+<div id="app" style="display:none">
+<div class="tabs"><button class="on" id="tbP" onclick="aba('P')">Painel</button><button id="tbR" onclick="aba('R')">Relatórios</button><button id="tbC" onclick="aba('C')">Clientes</button></div>
+<div id="tP">
+<div class="sec"><h2 class="pt">PEDIDOS</h2><div style="overflow:auto"><table class="tb"><thead><tr><th>Cliente</th><th>WhatsApp</th><th>Itens</th><th>Data</th><th>Pagamento</th><th>Valor</th><th>Status</th><th>Ações</th></tr></thead><tbody id="peds"></tbody></table></div></div>
+<div class="sec"><h2 class="pt">AJUSTES DO RESTAURANTE</h2>
+<label>Nome do restaurante (aparece no topo do site, nas mensagens e no recibo)</label><input id="anome" maxlength="40" autocomplete="off" placeholder="Nome do restaurante">
+<label>Frase de efeito (opcional) — aparece abaixo da logo no início do site; deixe vazio para esconder</label><input id="aslogan" maxlength="60" autocomplete="off" placeholder="Ex.: Performance e estilo em cada movimento">
+<label style="display:flex;gap:8px;align-items:center;margin:6px 0 14px;text-transform:none;letter-spacing:0;font-size:13px;cursor:pointer"><input type="checkbox" id="asf" style="width:auto;margin:0"> Esconder o fundo colorido da logo do banner (use quando a logo é clara e tem um quadrado colorido atrás; desmarque se a logo for escura)</label>
+<label>WhatsApp que recebe os pedidos (DDD + número)</label><input id="aw" type="tel" inputmode="tel" placeholder="85999998888">
+<label>Instagram do restaurante (@ do perfil) — aparece como ícone no site do cliente; deixe vazio para esconder</label><input id="ai" placeholder="@seuinstagram" autocapitalize="none" autocomplete="off" spellcheck="false">
+<label>Reiniciar a contagem dos pedidos (nº 01, 02, 03...)</label><select id="ar"><option value="nunca">Nunca (continua sempre)</option><option value="diario">Todo dia</option><option value="semanal">Toda semana (na segunda-feira)</option><option value="mensal">Todo mês</option></select>
+<button class="btn o" style="display:block;margin-bottom:18px" onclick="reiniciarContagem()">Reiniciar contagem agora (próximo pedido = 01)</button>
+<label>Endereço para retirada no restaurante (aparece para o cliente que escolher retirar)</label><input id="arl" placeholder="Rua, número, bairro, cidade" onchange="salvarRetirada()">
+<label>Horário de retirada (opcional)</label><input id="arh" placeholder="Seg a Sáb, das 9h às 18h" onchange="salvarRetirada()">
+<label>Taxa padrão de entrega (R$) — vale para todos os bairros quando a lista abaixo estiver vazia, e para bairros fora da lista (se você permitir). Vazio ou 0 = sem taxa</label><input id="afr" type="number" step="0.01" min="0" inputmode="decimal" placeholder="10.00">
+<label>Taxa de entrega por bairro — digite o bairro, o valor e toque em Adicionar (salva na hora)</label>
+<div style="display:grid;grid-template-columns:1fr 110px;gap:0 10px"><div><input id="bn" placeholder="Bairro (ex.: Aldeota)" onkeydown="if(event.key==='Enter')$('bv').focus()"></div><div><input id="bv" type="number" step="0.01" min="0" inputmode="decimal" placeholder="Valor" onkeydown="if(event.key==='Enter')addBairro()"></div></div>
+<button class="btn o" style="display:block;margin-bottom:12px" onclick="addBairro()">Adicionar bairro</button>
+<div id="bl" style="margin-bottom:18px"></div>
+<label>Bairro que não está na lista</label><select id="abn" style="width:100%;margin-bottom:12px;padding:10px" onchange="db.collection('config').doc('loja').set({bairroOutros:this.value},{merge:true}).then(()=>avisoAdm('Salvo'))"><option value="padrao">Cobrar a taxa padrão</option><option value="bloquear">Não entregar (só retirada)</option></select>
+<label>Frete grátis a partir de (R$) — opcional</label><input id="afg" type="number" step="0.01" min="0" inputmode="decimal" placeholder="200.00">
+<label>Logo do site do cliente</label><input id="af" type="file" accept="image/*" onchange="lerLogo(this)"><label style="display:flex;gap:8px;align-items:center;margin:6px 0 10px;text-transform:none;letter-spacing:0;font-size:13px;cursor:pointer"><input type="checkbox" id="alogoAuto" checked onchange="if($('af').files[0])lerLogo($('af'))" style="width:auto;margin:0"> Ajustar a logo (recorta bordas vazias e remove fundo liso)</label>
+<img id="alogo" alt="" style="display:none;max-height:90px;max-width:100%;width:auto;object-fit:contain;margin:0 0 12px;padding:8px 12px;box-sizing:border-box;background:#000;border:1px solid var(--line)"><button class="btn o" style="display:block;margin-bottom:18px" onclick="tirarLogo()">Voltar para a logo padrão</button>
+<h3 style="font-size:14px;margin:6px 0 10px">Mensagens enviadas ao cliente (botão WhatsApp de cada pedido)</h3><p style="color:var(--mut);font-size:12px;margin-bottom:8px">Use {nome}, {total} e {pedido} (número do pedido). A assinatura do restaurante é adicionada automaticamente no final. Na mensagem de <b>Confirmado</b> também dá para usar {detalhes} (itens, observações e pagamento); se não usar, os detalhes entram no final automaticamente. Os outros status não levam detalhes.</p>
+<div id="amsgs"></div><button class="btn" onclick="salvarAjustes()">Salvar ajustes</button></div>
+<div class="sec"><h2 class="pt">PIX</h2>
+<label>Tipo da chave</label><select id="pxt" style="width:100%;margin-bottom:12px;padding:10px"><option value="cpf">CPF / CNPJ</option><option value="tel">Telefone</option><option value="email">E-mail</option><option value="rand">Chave aleatória</option></select>
+<label>Chave Pix</label><input id="pxk" placeholder="Sua chave Pix">
+<label>Nome do recebedor (máx. 25 letras)</label><input id="pxn" maxlength="25" placeholder="Emporio Medonça">
+<label>Cidade (máx. 15 letras)</label><input id="pxc" maxlength="15" placeholder="Fortaleza">
+<button class="btn" onclick="salvarPix()">Salvar Pix</button></div>
+<div class="sec" id="cam-sec"><h2 class="pt">CÂMERA DO TOTEM</h2>
+<p class="rd">Mostra a imagem da webcam do computador num canto da tela do cliente, para ele se ver (efeito espelho). A imagem aparece só na tela: não é gravada nem enviada. O navegador pede permissão da câmera na primeira vez; toque em <b>Permitir</b> no computador do totem.</p>
+<label>Câmera na tela do cliente</label><select id="camA"><option value="0">Desligada</option><option value="1">Ligada</option></select>
+<label>Posição na tela</label><select id="camP"><option value="be">Canto inferior esquerdo</option><option value="bd">Canto inferior direito</option><option value="te">Canto superior esquerdo</option><option value="td">Canto superior direito</option></select>
+<label>Tamanho</label><select id="camT"><option value="p">Pequeno</option><option value="m">Médio</option><option value="g">Grande</option></select>
+<label>Texto abaixo da imagem (opcional)</label><input id="camX" maxlength="40" placeholder="Sorria! Ambiente com câmera">
+<button class="btn" onclick="camSalvar()">Salvar câmera</button></div>
+<div class="sec" id="pg-sec"><h2 class="pt">FORMAS DE PAGAMENTO</h2>
+<p class="rd">Escolha quais formas de pagamento o cliente vê ao finalizar o pedido. Adicione novas (ex.: Cartão de débito, Vale refeição) ou remova as que você não aceita. Precisa ficar pelo menos uma.</p>
+<div id="pgL" style="margin-bottom:12px"></div>
+<div class="rctl"><input id="pgN" maxlength="24" autocomplete="off" placeholder="Nova forma de pagamento" style="flex:1;min-width:180px;width:auto;margin:0" onkeydown="if(event.key==='Enter')pgAdd()"><button class="btn" onclick="pgAdd()">Adicionar</button></div></div>
+<div class="sec"><h2 class="pt">CARDÁPIO</h2>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:0 12px"><div><label>Nome</label><input id="pn"></div><div><label>Preço</label><input id="pp" type="number" step="0.01"></div><div><label>Preço promocional (opcional)</label><input id="pm" type="number" step="0.01"></div><div><label>Categoria</label><input id="pc" placeholder="Lanches" list="pcL" autocomplete="off"><datalist id="pcL"><option value="Lanches"><option value="Porções"><option value="Pratos"><option value="Bebidas"><option value="Sobremesas"></datalist></div><div><label>Foto do prato</label><input id="pf" type="file" accept="image/*" onchange="lerFoto(this)"><img id="prev" alt="" style="display:none;max-height:90px;margin:-4px 0 12px;border:1px solid var(--line)"></div></div>
+<label>Descrição (ingredientes, tamanho da porção — até 160 letras)</label><textarea id="pd" rows="2" maxlength="160" placeholder="Ex.: Pão brioche, hambúrguer 180 g, queijo cheddar e molho da casa"></textarea>
+<div id="blocoAdic" style="display:none"><label>Adicionais — um por linha, no formato nome ; preço</label><textarea id="pa" rows="3"></textarea>
+<label>Itens que o cliente pode retirar — separe por vírgula</label><input id="pr"></div>
+<button class="btn" onclick="salvar()">Cadastrar item</button>
+<div class="grid" id="lista" style="margin-top:24px"></div></div></div>
+<div id="tR" style="display:none"><div class="sec"><h2 class="pt">RELATÓRIOS</h2>
+<p class="rd">Vendas por mês, por forma de pagamento e por produto. Entram na receita somente os pedidos <b>entregues</b>. Cancelados e pedidos ainda em andamento (inclusive Pix aguardando conferência) ficam de fora.</p>
+<label>Mês</label><div class="rctl"><select id="rm" onchange="relRender()"></select><button class="btn o" onclick="relMes(0)">Este mês</button><button class="btn o" onclick="relMes(-1)">Mês passado</button><button class="btn o" onclick="relCarregar()">Atualizar</button><button class="btn o" onclick="relCsv()">Exportar CSV</button></div>
+<div id="rOut" style="margin-top:20px"></div></div></div>
+
+<div id="tC" style="display:none"><div class="sec"><h2 class="pt">CLIENTES E VISITANTES</h2>
+<p class="rd">Quem entra no site, quem se cadastrou e quem já pediu. Visitantes sem cadastro aparecem como "Visitante".</p>
+<div class="rk" id="clk"></div>
+<div class="rctl" style="margin:16px 0"><input id="clq" placeholder="Buscar nome, telefone ou bairro" oninput="clRender()" style="margin:0"><select id="clf" onchange="clRender()"><option value="all">Todos</option><option value="cad">Cadastrados</option><option value="comp">Já pediram</option><option value="vis">Só visitantes</option></select><select id="clo" onchange="clRender()"><option value="vis">Mais recentes</option><option value="gasto">Quem mais gastou</option><option value="n">Mais visitas</option></select><button class="btn o" onclick="clCarregar()">Atualizar</button><button class="btn o" onclick="clCsv()">Exportar CSV</button><button class="btn o" style="color:#e5484d;border-color:#e5484d" onclick="clApagarTodos()">Apagar todos</button></div>
+<div style="overflow:auto"><table class="tb"><thead><tr><th>Quem</th><th>WhatsApp</th><th>Visitas</th><th>Última visita</th><th>Pedidos</th><th>Total gasto</th><th>Ações</th></tr></thead><tbody id="clb"></tbody></table></div></div></div>
+
+<div class="ov" id="cm" style="justify-content:center;align-items:center"><div class="pn" style="height:auto;max-width:360px;border:1px solid var(--line)"><h3 class="pt" style="margin-bottom:12px">AVISAR O CLIENTE?</h3><p id="cmP" style="color:var(--mut);margin-bottom:18px;font-size:14px"></p><button class="btn" style="width:100%;margin-bottom:8px" onclick="cmSim()">Sim, abrir WhatsApp</button><button class="btn o" style="width:100%" onclick="cmNao()">Não avisar agora</button></div></div>
+<div class="ov" id="ep" style="justify-content:center;align-items:center"><div class="pn" style="height:auto;max-width:480px;max-height:92vh;overflow:auto;border:1px solid var(--line)"><h3 class="pt" style="margin-bottom:12px">EDITAR ITEM</h3>
+<label>Nome</label><input id="epN"><label>Preço</label><input id="epP" type="number" step="0.01" inputmode="decimal">
+<label>Preço promocional (deixe vazio se não estiver em promoção)</label><input id="epPm" type="number" step="0.01" inputmode="decimal"><label>Categoria</label><input id="epC"><label>Descrição</label><textarea id="epD" rows="2" maxlength="160"></textarea><div id="blocoAdicEp" style="display:none"><label>Adicionais (um por linha: nome ; preço)</label><textarea id="epA" rows="3"></textarea><label>Itens que podem ser retirados (separe por vírgula)</label><input id="epR"></div>
+<button class="btn" style="width:100%;margin-bottom:8px" onclick="salvarProd()">Salvar</button><button class="btn o" style="width:100%" onclick="fecharProd()">Cancelar</button></div></div>
+<div class="toast" id="toast"></div><script src="config.js"></script><script src="pix.js"></script><script src="admin.js"></script>
+<script src="admin-extras.js"></script>
+<script src="catalogo-admin.js"></script>
+<script>
+async function reiniciarContagem() {
+  if (!confirm('Reiniciar a contagem? O próximo pedido será o nº 01.')) return;
+  try {
+    await db.collection('config').doc('contador').set({ n: 0, p: 'reset-' + Date.now() });
+    alert('Contagem reiniciada. O próximo pedido será o nº 01.');
+  } catch (e) { alert('Erro ao reiniciar: ' + e.message); }
+}
+</script><style>
+/* campos antigos de Adicionais / Itens removíveis (escondidos) */
+#blocoAdic,#blocoAdicEp,#pa,#pr,#epA,#epR{display:none!important}
+/* COMPLEMENTOS dentro do card do CARDÁPIO (sem caixa própria) */
+body.adm .sec.sec-dentro{background:none;border:0;border-radius:0;box-shadow:none;width:auto;max-width:none;margin:22px 0 0;padding:20px 0 0;border-top:1px solid var(--line)}
+body.adm .sec.sec-dentro>h2{font-size:15px}
+</style>
+<script>
+/* Move a seção COMPLEMENTOS (criada pelo catalogo-admin.js) para dentro da seção CARDÁPIO */
+(function(){
+  function mover(){
+    var lista=document.getElementById('lista'); if(!lista) return;
+    var cardapio=lista.closest('.sec'); if(!cardapio) return;
+    document.querySelectorAll('.sec').forEach(function(s){
+      if(s===cardapio||cardapio.contains(s)) return;
+      var h=s.querySelector(':scope > h2'); if(!h||h.textContent.trim().toUpperCase()!=='COMPLEMENTOS') return;
+      s.classList.add('sec-dentro');
+      lista.parentNode.insertBefore(s,lista);
+    });
+  }
+  new MutationObserver(mover).observe(document.body,{childList:true,subtree:true});
+  mover();
+})();
+</script>
+<script>
+/* Formas de pagamento: salvas em config/loja (campo "pagamentos") e lidas pelo site do cliente */
+(function(){
+  var PAD=['Pix','Cartão','Dinheiro'], PG=PAD.slice(), iniciado=false;
+  var q=function(t){return String(t==null?'':t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});};
+  function desenhar(){
+    document.getElementById('pgL').innerHTML=PG.map(function(n,i){
+      return '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;padding:10px 12px;border:1px solid var(--line);border-radius:10px"><span style="flex:1;font-weight:600">'+q(n)+'</span><button class="ab r" onclick="pgDel('+i+')">Remover</button></div>';
+    }).join('');
+  }
+  async function salvar(l){
+    try{ await db.collection('config').doc('loja').set({pagamentos:l},{merge:true}); avisoAdm('Formas de pagamento salvas'); return true; }
+    catch(e){ alert('Erro ao salvar: '+e.message); return false; }
+  }
+  window.pgAdd=async function(){
+    var n=document.getElementById('pgN').value.replace(/[<>&\"]/g,'').replace(/\s+/g,' ').trim().slice(0,24);
+    if(!n) return alert('Digite o nome da forma de pagamento.');
+    if(PG.some(function(x){return x.toLowerCase()===n.toLowerCase();})) return alert('Essa forma de pagamento já está na lista.');
+    if(PG.length>=10) return alert('Limite de 10 formas de pagamento.');
+    if(await salvar(PG.concat(n))) document.getElementById('pgN').value='';
+  };
+  window.pgDel=async function(i){
+    if(PG.length<=1) return alert('Mantenha pelo menos uma forma de pagamento.');
+    if(!confirm('Remover "'+PG[i]+'" das formas de pagamento?')) return;
+    await salvar(PG.filter(function(_,k){return k!==i;}));
+  };
+  auth.onAuthStateChanged(function(u){
+    if(!u||u.email!==LOJA.adminEmail||iniciado) return; iniciado=true;
+    db.collection('config').doc('loja').onSnapshot(function(sn){
+      var d=sn.data()||{}; PG=(Array.isArray(d.pagamentos)&&d.pagamentos.length)?d.pagamentos.slice():PAD.slice(); desenhar();
+    });
+  });
+  desenhar();
+})();
+</script>
+<script>
+/* Câmera do totem: salva em config/loja (campo "camera"), lido pelo camera.js do site */
+(function(){
+  var iniciado=false;
+  window.camSalvar=async function(){
+    var c={ativo:document.getElementById('camA').value==='1',pos:document.getElementById('camP').value,tam:document.getElementById('camT').value,texto:document.getElementById('camX').value.trim().slice(0,40)};
+    try{ await db.collection('config').doc('loja').set({camera:c},{merge:true}); avisoAdm(c.ativo?'Câmera ligada':'Câmera desligada'); }
+    catch(e){ alert('Erro ao salvar: '+e.message); }
+  };
+  auth.onAuthStateChanged(function(u){
+    if(!u||u.email!==LOJA.adminEmail||iniciado) return; iniciado=true;
+    db.collection('config').doc('loja').onSnapshot(function(sn){
+      var c=(sn.data()||{}).camera||{};
+      document.getElementById('camA').value=c.ativo?'1':'0'; document.getElementById('camP').value=c.pos||'be';
+      document.getElementById('camT').value=c.tam||'m'; document.getElementById('camX').value=c.texto||'';
+    });
+  });
+})();
+</script>
+</body></html>
