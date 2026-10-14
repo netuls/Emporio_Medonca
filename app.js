@@ -354,7 +354,7 @@ async function atualizarConta() {
   $('fLogin').style.display = ok ? 'none' : 'block'; $('fPedidos').style.display = ok ? 'block' : 'none';
   renderSeguranca();
   if (offPed) { offPed(); offPed = null; }
-  if (!ok) { if (user && user.displayName && !$('cNome').value) { const n = user.displayName.trim().split(/\s+/); $('cNome').value = n[0]; $('cSob').value = n.slice(1).join(' '); } return; }
+  if (!ok) { if (lgModo !== 'novo') modoLogin('tel'); if (user && user.displayName && !$('cNome').value) { const n = user.displayName.trim().split(/\s+/); $('cNome').value = n[0]; $('cSob').value = n.slice(1).join(' '); } return; }
   $('cNome').value = perfil.nome; $('cSob').value = perfil.sobrenome || ''; $('cTel').value = perfil.tel || '';
   offPed = db.collection('pedidos').where('uid', '==', user.uid).onSnapshot(s => {
     const docs = s.docs.map(d => d.data()).sort((a, b) => (b.criadoEm ? b.criadoEm.seconds : 9e9) - (a.criadoEm ? a.criadoEm.seconds : 9e9));
@@ -399,7 +399,7 @@ async function sairConta() {
   await auth.signOut(); cart = []; atualizaSacola(); fechar(); aviso('Você saiu da conta');
 }
 
-function editarDados() { $('fLogin').style.display = 'block'; $('fPedidos').style.display = 'none'; }
+function editarDados() { modoLogin('edit'); $('fLogin').style.display = 'block'; $('fPedidos').style.display = 'none'; }
 // Totem: o telefone é o "login". O mesmo telefone sempre cai na mesma conta (mesmo cadastro, mesmos pedidos), mesmo depois de sair.
 // Por baixo é uma conta de e-mail/senha do Firebase gerada a partir do número (não é segurança: quem digita o número entra na conta dele).
 const TOTEM_DOM = '@totem.local', senhaTotem = t => 'tt' + t + 'x';
@@ -414,6 +414,8 @@ async function entrarPorTelefone(tel, podeCriar) {
 }
 async function salvarDados() {
   const nome = $('cNome').value.trim(), sobrenome = $('cSob').value.trim(), tel = $('cTel').value.replace(/\D/g, '').replace(/^55(?=\d{10,11}$)/, '');
+  if (lgModo === 'novo' && !(nome && sobrenome)) return aviso('Informe nome e sobrenome');
+  if (lgModo === 'novo') lgNovoCad = true;
   if (!/^\d{10,11}$/.test(tel)) return aviso('Telefone inválido: use DDD + número');
   try {
     if (!user || user.email !== tel + TOTEM_DOM) user = await entrarPorTelefone(tel, !!(nome && sobrenome));
@@ -422,7 +424,7 @@ async function salvarDados() {
     perfil = { ...ex, nome: n, sobrenome: sn, tel }; perfilUid = user.uid; endTocado = false;
     await db.collection('clientes').doc(user.uid).set(perfil);
   } catch (e) { return e.message === 'NOVO' ? aviso('Número novo: informe também nome e sobrenome') : err(e); }
-  await atualizarConta(); visitado = null; registrarVisita(); aviso('Dados salvos!'); cart.length ? abrir('pCarrinho') : fechar();
+  lgModo = 'tel'; await atualizarConta(); visitado = null; registrarVisita(); aviso(lgNovoCad ? 'Cadastro criado! Bem-vindo(a), ' + perfil.nome + '!' : 'Dados salvos!'); lgNovoCad = false; cart.length ? abrir('pCarrinho') : fechar();
 }
 const fmtTel = t => t.length === 11 ? `(${t.slice(0, 2)}) ${t.slice(2, 7)}-${t.slice(7)}` : t.length === 10 ? `(${t.slice(0, 2)}) ${t.slice(2, 6)}-${t.slice(6)}` : t;
 const fmtNum = n => String(n).padStart(2, '0');
@@ -456,6 +458,7 @@ async function finalizar() {
   };
   const ref = db.collection('pedidos').doc(), cont = db.collection('config').doc('contador'), per = chavePeriodo();
   enviando = true; aviso('Enviando seu pedido...');
+  try { const f = window.tirarFotoPedido && window.tirarFotoPedido(); if (f) ped.foto = f; } catch (e) {}   // foto do cliente no momento do pedido (se a câmera estiver ligada)
   try {
     await db.runTransaction(async t => {
       // leituras primeiro: contador e itens do cardápio; depois grava o número e o pedido juntos
@@ -529,9 +532,48 @@ function posPedido() {
 }
 function continuarTotem() { clearInterval(sairT); const m = $('pPos'); if (m) m.classList.remove('on'); }
 function sairTotem() {   // sai da conta deste cliente: o próximo começa do zero (uma nova identidade anônima é criada sozinha)
-  clearInterval(sairT); auth.signOut().catch(() => {});
+  clearInterval(sairT); lgModo = 'tel'; auth.signOut().catch(() => {});
   cart = []; atualizaSacola(); ['cNome', 'cSob', 'cTel'].forEach(i => { const e = $(i); if (e) e.value = ''; });
   if (typeof limpaExtras === 'function') limpaExtras();
   fechar(); window.scrollTo({ top: 0 });
 }
-{ const _p = document.querySelector('#fLogin p'); if (_p) _p.textContent = 'Já pediu aqui antes? Digite só o telefone. Cliente novo: nome, sobrenome e telefone.'; }
+// ── Entrar / cadastrar em etapas: 1) só o telefone; 2) se já tem cadastro entra direto; se não tem, pede nome e sobrenome ──
+let lgModo = 'tel', lgNovoCad = false;   // 'tel' (digitar o telefone) · 'novo' (cliente novo: nome) · 'edit' (alterar meus dados)
+(function montarLogin() {
+  const f = $('fLogin'); if (!f) return;
+  f.innerHTML = '<h2 class="pt" id="lgT"></h2><p id="lgP" style="color:var(--mut);margin-bottom:14px;font-size:13px"></p>'
+    + '<div id="lgTel"><label>Telefone / WhatsApp</label><input id="cTel" type="tel" inputmode="tel" placeholder="(85) 99999-8888" autocomplete="tel"></div>'
+    + '<div id="lgNome"><label>Nome</label><input id="cNome" autocomplete="given-name"><label>Sobrenome</label><input id="cSob" autocomplete="family-name"></div>'
+    + '<button class="btn" id="lgBtn" style="width:100%"></button>'
+    + '<button class="btn o" id="lgVolta" style="width:100%;margin-top:8px">Voltar</button>';
+  $('lgBtn').onclick = () => lgModo === 'tel' ? continuarTel() : salvarDados();
+  $('lgVolta').onclick = () => { modoLogin('tel'); $('cTel').focus(); };
+  ['cTel', 'cNome', 'cSob'].forEach(i => $(i).addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('lgBtn').click(); } }));
+  modoLogin('tel');
+})();
+function modoLogin(m) {
+  lgModo = m;
+  const T = { tel: ['ENTRAR OU CADASTRAR', 'Digite seu WhatsApp. Se você já tem cadastro, entra na hora. Se for sua primeira vez, pedimos seu nome em seguida.', 'Continuar'],
+    novo: ['PRIMEIRO CADASTRO', 'Não encontramos o número <b id="lgNum"></b>. Informe seu nome para criar o cadastro.', 'Criar cadastro'],
+    edit: ['SEUS DADOS', 'Confira ou altere seus dados.', 'Salvar'] }[m];
+  $('lgT').textContent = T[0]; $('lgP').innerHTML = T[1]; $('lgBtn').textContent = T[2];
+  $('lgTel').style.display = m === 'novo' ? 'none' : ''; $('lgNome').style.display = m === 'tel' ? 'none' : '';
+  $('lgVolta').style.display = m === 'novo' ? '' : 'none';
+  if (m === 'novo') { const n = $('lgNum'), t = $('cTel').value.replace(/\D/g, '').replace(/^55(?=\d{10,11}$)/, ''); if (n) n.textContent = fmtTel(t); }
+}
+async function continuarTel() {
+  const tel = $('cTel').value.replace(/\D/g, '').replace(/^55(?=\d{10,11}$)/, '');
+  if (!/^\d{10,11}$/.test(tel)) return aviso('Telefone inválido: use DDD + número');
+  const b = $('lgBtn'); b.disabled = true;
+  try {
+    const u = await entrarPorTelefone(tel, false);   // se o número já existe, entra; se não, lança "NOVO"
+    user = u;
+    const ex = (await db.collection('clientes').doc(u.uid).get()).data() || {};
+    if (!ex.nome) { modoLogin('novo'); $('cNome').focus(); return; }   // conta existe mas sem cadastro completo: pede o nome
+    perfil = { ...ex, tel: ex.tel || tel }; perfilUid = u.uid; endTocado = false;
+    lgModo = 'tel'; await atualizarConta(); visitado = null; registrarVisita();
+    aviso('Bem-vindo(a) de volta, ' + ex.nome + '!'); cart.length ? abrir('pCarrinho') : fechar();
+  } catch (e) {
+    if (e.message === 'NOVO') { modoLogin('novo'); $('cNome').focus(); } else err(e);
+  } finally { b.disabled = false; }
+}
