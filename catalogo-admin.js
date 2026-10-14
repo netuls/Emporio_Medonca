@@ -21,7 +21,10 @@ function cgMontarAba() {
   const t = document.createElement('div'); t.id = 'tG'; t.style.display = 'none';
   t.innerHTML = `<div class="sec" id="cg-sec"><h2 class="pt">COMPLEMENTOS</h2>
     <p class="rd">Crie grupos de opções (adicionais, molhos, sabores...) e ligue a vários itens do cardápio de uma vez. Em cada grupo você define quantas opções o cliente escolhe (mínimo e máximo), se pode repetir a mesma opção (ex.: 2× bacon) e como o preço é calculado.</p>
-    <div id="cgL"></div><button class="btn" onclick="cgNovo()">+ Novo grupo</button></div>`;
+    <div id="cgL"></div><button class="btn" onclick="cgNovo()">+ Novo grupo</button></div>
+    <div class="sec" id="stk-sec"><h2 class="pt">PREÇO E ESTOQUE</h2>
+    <p class="rd">Ajuste o preço (pode ser <b>0,00</b> quando o valor vem só dos complementos) e o estoque de cada item. Deixe o estoque <b>vazio</b> para não controlar. A cada pedido o estoque diminui sozinho e, ao chegar em 0, o item aparece como "Esgotado" no site.</p>
+    <div id="stkL"></div><button class="btn" onclick="stkSalvar()">Salvar preços e estoque</button></div>`;
   $('tC').insertAdjacentElement('afterend', t);
   const orig = aba;
   aba = function (k) {
@@ -38,7 +41,32 @@ function cgMoverProdutos() {
   secs.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1);
   secs.forEach(s => $('tG').appendChild(s)); cgMoved = true;
 }
+// ── Preço e estoque de cada item (aceita preço 0,00; estoque vazio = sem controle) ──
+function stkRender() {
+  const L = $('stkL'); if (!L) return;
+  if (L.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;   // não refaz a lista enquanto a pessoa digita
+  const P = Object.entries(cgProds()).sort((a, b) => (a[1].nome || '').localeCompare(b[1].nome || '', 'pt-BR'));
+  const I = 'width:100%;box-sizing:border-box;padding:8px;margin:0;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--tx);font-size:14px';
+  L.innerHTML = P.length ? '<div style="display:grid;grid-template-columns:1fr 100px 110px;gap:6px;font-size:12px;color:var(--mut);margin-bottom:4px"><span>Item</span><span>Preço (R$)</span><span>Estoque</span></div>'
+    + P.map(([id, p]) => `<div style="display:grid;grid-template-columns:1fr 100px 110px;gap:6px;align-items:center;margin-bottom:6px"><span>${esc(p.nome)}${p.estoque !== undefined && p.estoque !== null && +p.estoque <= 0 ? ' <small style="color:#e5484d">(esgotado)</small>' : ''}</span><input data-stk="p" data-id="${esc(id)}" type="number" step="0.01" min="0" inputmode="decimal" value="${p.preco ?? 0}" style="${I}"><input data-stk="e" data-id="${esc(id)}" type="number" step="1" min="0" inputmode="numeric" placeholder="sem controle" value="${p.estoque ?? ''}" style="${I}"></div>`).join('')
+    : '<p class="rd">Cadastre os itens do cardápio primeiro.</p>';
+}
+async function stkSalvar() {
+  const P = cgProds(), F = firebase.firestore.FieldValue, b = db.batch(); let n = 0;
+  for (const el of document.querySelectorAll('#stkL input[data-stk="p"]')) {
+    const id = el.dataset.id, p = P[id]; if (!p) continue;
+    const eEl = document.querySelector('#stkL input[data-stk="e"][data-id="' + id + '"]');
+    const preco = Math.round(cgNum(el.value) * 100) / 100; if (preco < 0) return alert('O preço de "' + p.nome + '" não pode ser negativo.');
+    const eTxt = eEl.value.trim(); if (eTxt !== '' && (isNaN(+eTxt) || +eTxt < 0)) return alert('Estoque inválido em "' + p.nome + '".');
+    const est = eTxt === '' ? null : Math.floor(+eTxt), estAtual = (p.estoque === undefined || p.estoque === null) ? null : Math.floor(+p.estoque);
+    const mud = {}; if (preco !== (+p.preco || 0)) mud.preco = preco; if (est !== estAtual) mud.estoque = est === null ? F.delete() : est;
+    if (Object.keys(mud).length) { b.update(db.collection('produtos').doc(id), mud); n++; }
+  }
+  if (!n) return avisoAdm('Nada para salvar');
+  try { await b.commit(); avisoAdm('Preços e estoque salvos (' + n + ' item' + (n > 1 ? 's' : '') + ')'); } catch (e) { alert('Erro ao salvar: ' + e.message); }
+}
 function cgRender() {
+  stkRender();
   const L = $('cgL'); if (!L) return; const P = cgProds();
   L.innerHTML = CG.length ? CG.map(g => {
     const uso = Object.values(P).filter(p => (p.grupos || []).includes(g.id)).length;
