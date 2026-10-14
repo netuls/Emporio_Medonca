@@ -476,6 +476,19 @@ function chavePeriodo() {   // período atual no horário do restaurante; a sema
 }
 const r2 = n => Math.round(n * 100) / 100;
 
+// Foto do cliente ao finalizar: usa a função do camera.js (tirarFotoPedido); se ela não existir, falhar ou devolver foto grande demais,
+// tira a foto direto do vídeo da câmera que está na tela (reduzida para 480 px de largura, ~30 KB). Sem câmera ativa, o pedido segue sem foto.
+function fotoDoCliente() {
+  const ok = f => typeof f === 'string' && f.startsWith('data:image') && f.length < 800000;   // o documento do pedido no Firestore tem no máx. 1 MB
+  try { const f = window.tirarFotoPedido && window.tirarFotoPedido(); if (ok(f)) return f; if (f) console.warn('Foto: a função da câmera devolveu algo inválido ou grande demais; tentando pelo vídeo'); } catch (e) { console.warn('Foto (camera.js):', e); }
+  try {
+    const vs = [...document.querySelectorAll('video')], v = vs.find(x => x.videoWidth > 0 && !x.paused && !x.ended) || vs.find(x => x.videoWidth > 0);
+    if (!v) { console.warn('Foto: nenhuma câmera ativa na tela (câmera desligada no painel, sem permissão ou ainda iniciando)'); return null; }
+    const w = Math.min(480, v.videoWidth), h = Math.round(v.videoHeight * w / v.videoWidth), c = document.createElement('canvas'); c.width = w; c.height = h;
+    c.getContext('2d').drawImage(v, 0, 0, w, h);
+    const f = c.toDataURL('image/jpeg', 0.6); return ok(f) ? f : null;
+  } catch (e) { console.warn('Foto:', e); return null; }
+}
 // ── Finalizar: o número do pedido e o pedido são gravados juntos, na mesma transação (não "queima" número se falhar).
 async function finalizar() {
   if (enviando) return;
@@ -495,7 +508,7 @@ async function finalizar() {
   if (ped.total === 0) { ped.pagamento = 'Sem cobrança'; ped.status = 'Novo'; }   // item de R$ 0,00 sem complementos pagos: não há o que cobrar (nem Pix)
   const ref = db.collection('pedidos').doc(), cont =db.collection('config').doc('contador'), per = chavePeriodo();
   enviando = true; aviso('Enviando seu pedido...');
-  try { const f = window.tirarFotoPedido && window.tirarFotoPedido(); if (typeof f === 'string' && f.startsWith('data:image') && f.length < 800000) { ped.foto = f; ped.temFoto = true; } } catch (e) {}   // temFoto: o painel acha e apaga as fotos com mais de 24h; o limite de tamanho evita recusar o pedido (documento do Firestore tem no máx. 1 MB)   // foto do cliente no momento do pedido (se a câmera estiver ligada)
+  try { const f = fotoDoCliente(); if (f) { ped.foto = f; ped.temFoto = true; } } catch (e) {}   // temFoto: o painel acha e apaga as fotos com mais de 24h; o limite de tamanho evita recusar o pedido (documento do Firestore tem no máx. 1 MB)   // foto do cliente no momento do pedido (se a câmera estiver ligada)
   try {
     await db.runTransaction(async t => {
       // leituras primeiro: contador e itens do cardápio; depois grava o número e o pedido juntos
