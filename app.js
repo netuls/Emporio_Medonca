@@ -143,8 +143,10 @@ function add(id) {
   if (it) it.q = Math.min(50, it.q + n); else cart.push({ id, nome: p.nome, preco: r2(precoAtual(p) + e.extra), extra: e.extra, ads: e.ads, tam: 'Único', det: e.det, q: n });
   QTD[id] = 1; const q = $('q' + id); if (q) q.textContent = 1;
   const box = $('o' + id); if (box) { box.querySelectorAll('input[type=checkbox]').forEach(x => x.checked = false); const ob = $('ob' + id); if (ob) ob.value = ''; const d = box.closest('details'); if (d) d.open = false; }
-  precoLinha(id); atualizaSacola(); aviso(n > 1 ? n + ' itens adicionados à sacola' : 'Item adicionado à sacola');
-  if (!clienteLogado()) setTimeout(() => { if (!clienteLogado()) { abrir('pConta'); aviso('Entre com seu telefone para continuar o pedido'); } }, 700);   // o item fica na sacola; pede o login logo depois
+  precoLinha(id); atualizaSacola();
+  // Sem login: abre a aba de entrar/cadastrar NO MESMO INSTANTE (o item já ficou na sacola); com login: só avisa que adicionou
+  if (!clienteLogado()) { abrir('pConta'); aviso('Item na sacola! Entre com seu telefone para continuar'); }
+  else aviso(n > 1 ? n + ' itens adicionados à sacola' : 'Item adicionado à sacola');
 }
 // Cliente "logado" = entrou pelo telefone (não vale visitante anônimo) e tem cadastro completo
 const clienteLogado = () => !!(user && !user.isAnonymous && perfil && perfil.nome && perfil.tel);
