@@ -25,12 +25,12 @@ const MARCA_GER = _bt ? _bt.textContent : '', SLOGAN_GER = _hp ? _hp.textContent
 function aplicarMarca(c) {
   NOME = c.nome || NOME_GER; const mc = c.marca || (c.nome ? c.nome.slice(0, 28) : MARCA_GER);
   document.title = NOME; document.querySelectorAll('.brand .logo-t').forEach(e => e.textContent = mc);
-  document.querySelectorAll('.brand img, .hero img, .ravatar').forEach(i => i.alt = NOME);
+  document.querySelectorAll('.brand img, .hero img, .ravatar, .wlogo').forEach(i => i.alt = NOME);
   if (_hp) _hp.textContent = c.slogan !== undefined ? c.slogan : SLOGAN_GER;
   document.querySelectorAll('.rcard h1').forEach(e => e.textContent = NOME); const rc = $('rchips'), sl = c.slogan !== undefined ? c.slogan : SLOGAN_GER; if (rc) rc.innerHTML = sl ? '<span>' + esc(sl) + '</span>' : '';
   if (_he) _he.classList.toggle('sf', c.logoSemFundo !== undefined ? !!c.logoSemFundo : SF_GER);
 }
-const logos = [...document.querySelectorAll('.brand img, .hero img, .ravatar')]; logos.forEach(i => i.dataset.o = i.getAttribute('src'));
+const logos = [...document.querySelectorAll('.brand img, .hero img, .ravatar, .wlogo')]; logos.forEach(i => i.dataset.o = i.getAttribute('src'));
 // Sem "piscar" a logo antiga: usa a última logo salva neste aparelho; na primeira visita, esconde até a logo do restaurante chegar
 const LOGO_KEY = 'logo_loja'; let logoCache = ''; try { logoCache = localStorage.getItem(LOGO_KEY) || ''; } catch (e) {}
 logos.forEach(i => { if (logoCache) i.src = logoCache; else i.style.visibility = 'hidden'; });
@@ -46,7 +46,10 @@ db.collection('config').doc('loja').onSnapshot(s => {
   logos.forEach(i => { const novo = c.logo || i.dataset.o; if (i.getAttribute('src') !== novo) i.src = novo; i.style.visibility = ''; });
   if ($('pCarrinho').classList.contains('on')) renderCarrinho();
 }, () => {});
-const esgotado = p => p.indisponivel === true;   // restaurante: o item está disponível ou não (sem contagem de estoque)
+// Estoque: se o item tem o campo "estoque" (número), ele é controlado e diminui a cada pedido; sem o campo, é ilimitado
+const temEstoque = p => p.estoque !== undefined && p.estoque !== null && p.estoque !== '' && !isNaN(+p.estoque);
+const estRest = p => temEstoque(p) ? Math.max(0, Math.floor(+p.estoque) - cart.filter(c => c.id === p.id).reduce((a, c) => a + c.q, 0)) : Infinity;   // quanto ainda dá para pôr na sacola
+const esgotado = p => p.indisponivel === true || (temEstoque(p) && +p.estoque <= 0);
 const selTam = el => { el.parentNode.querySelectorAll('b').forEach(x => x.classList.remove('on')); el.classList.add('on'); };
 
 // ── Aberto / fechado: horário de funcionamento automático + pausa manual pelo painel ──
@@ -115,7 +118,8 @@ function renderLoja() {
   else if (fOrd === 'az') L.sort((x, y) => String(x.nome).localeCompare(String(y.nome), 'pt-BR'));
   $('grid').innerHTML = L.map(p => {
     const off = esgotado(p), ads = p.adicionais || [], rm = p.remover || [];
-    const tag = off ? '<span class="tag">Indisponível</span>' : (emPromo(p) ? '<span class="tag">Promoção</span>' : '');
+    const baixo = !off && temEstoque(p) && +p.estoque <= 5;
+    const tag = off ? '<span class="tag">' + (p.indisponivel === true ? 'Indisponível' : 'Esgotado') + '</span>' : (baixo ? '<span class="tag">Restam ' + Math.floor(+p.estoque) + '</span>' : (emPromo(p) ? '<span class="tag">Promoção</span>' : ''));
     const pers = off ? '' : `<details class="pers"><summary>Personalizar</summary><div id="o${p.id}" onchange="precoLinha('${p.id}')">${ads.length ? '<h5>Adicionais</h5>' + ads.map((x, i) => `<label class="opt"><input type="checkbox" data-k="a" data-i="${i}"><span>${esc(x.nome)}</span>${+x.preco > 0 ? `<em>+ ${R$(x.preco)}</em>` : ''}</label>`).join('') : ''}${rm.length ? '<h5>Retirar</h5>' + rm.map((x, i) => `<label class="opt"><input type="checkbox" data-k="r" data-i="${i}"><span>Sem ${esc(x)}</span></label>`).join('') : ''}<h5>Observação</h5><input class="ob" id="ob${p.id}" maxlength="120" placeholder="Ex.: carne ao ponto, sem pimenta" autocomplete="off"></div></details>`;
     return `<div class="card${off ? ' off' : ''}"><div class="im" style="background-image:url('${esc(p.img)}')">${tag}</div><div class="in"><h3>${esc(p.nome)}</h3>${p.desc ? `<p class="desc">${esc(p.desc)}</p>` : ''}<div class="pr">${emPromo(p) ? `<s style="color:var(--mut);font-size:.8em;font-weight:400;margin-right:6px">${R$(p.preco)}</s>${R$(precoAtual(p))}` : R$(p.preco)}</div>
     ${pers}
@@ -146,6 +150,7 @@ function maisMenos(id, d) {
 function add(id) {
   const p = prods.find(x => x.id === id), n = QTD[id] || 1; if (!p) return;
   if (esgotado(p)) return aviso('Este item está indisponível no momento');
+  if (n > estRest(p)) return aviso(estRest(p) > 0 ? 'Só restam ' + estRest(p) + ' unidade(s) deste item' : 'Você já adicionou todo o estoque deste item');
   const e = extraDe(p, id), it = cart.find(c => c.id === id && (c.det || '') === e.det);
   if (it) it.q = Math.min(50, it.q + n); else cart.push({ id, nome: p.nome, preco: r2(precoAtual(p) + e.extra), extra: e.extra, ads: e.ads, tam: 'Único', det: e.det, q: n });
   QTD[id] = 1; const q = $('q' + id); if (q) q.textContent = 1;
@@ -161,6 +166,7 @@ const atualizaSacola = () => { const n = cart.reduce((a, c) => a + c.q, 0); $('q
 // + e − direto na sacola
 function mudaQ(i, d) {
   const c = cart[i]; if (!c) return;
+  if (d > 0) { const p = prods.find(x => x.id === c.id); if (p && estRest(p) < d) return aviso('Estoque máximo deste item atingido'); }
   c.q += d; if (c.q <= 0) cart.splice(i, 1);
   atualizaSacola(); renderCarrinho();
 }
@@ -279,8 +285,8 @@ function renderRetirada() {
 }
 
 // ── Pagamento: quando o cliente paga (na entrega, na retirada ou antecipado) ──
-const quandoPaga = () => forma === 'Pix' ? 'Antecipado' : (entrega === 'Retirada' ? 'Na retirada' : 'Na entrega');
-const pagTxt = (pag, q) => pag + (q === 'Na entrega' ? ' · pagamento na entrega' : q === 'Na retirada' ? ' · pagamento na retirada' : q === 'Antecipado' ? ' · pago antecipado' : '');
+const quandoPaga = () => total() === 0 ? 'Sem cobrança' : forma === 'Pix' ? 'Antecipado' : (entrega === 'Retirada' ? 'Na retirada' : 'Na entrega');
+const pagTxt = (pag, q) => q === 'Sem cobrança' ? 'Sem cobrança (nada a pagar)' : pag + (q === 'Na entrega' ? ' · pagamento na entrega' : q === 'Na retirada' ? ' · pagamento na retirada' : q === 'Antecipado' ? ' · pago antecipado' : '');
 function rotulosPagamento() {
   const q = entrega === 'Retirada' ? 'na retirada' : 'na entrega';
   document.querySelectorAll('#fp div').forEach(d => { d.innerHTML = d.dataset.f + '<small>' + (d.dataset.f === 'Pix' ? 'pague agora' : q) + '</small>'; });
@@ -337,6 +343,8 @@ function renderCarrinho() {
   $('itens').innerHTML = cart.map((c, i) => `<div class="li"><span><b style="font-weight:500">${esc(c.nome)}</b>${c.det ? `<br><small style="color:var(--mut)">${esc(c.det)}</small>` : ''}<br><span style="display:inline-flex;align-items:center;gap:12px;margin-top:6px"><a href="#" onclick="mudaQ(${i},-1);return false" style="font-size:18px;padding:0 6px" aria-label="Diminuir">−</a><b>${c.q}</b><a href="#" onclick="mudaQ(${i},1);return false" style="font-size:18px;padding:0 6px" aria-label="Aumentar">+</a></span></span><span>${R$(c.preco * c.q)} <a href="#" onclick="cart.splice(${i},1);atualizaSacola();renderCarrinho();return false" style="color:var(--mut)">✕</a></span></div>`).join('') || '<p style="color:var(--mut)">Sua sacola está vazia. Escolha algo no cardápio.</p>';
   renderRetirada(); renderResumo(); renderStatus();
   $('tot').textContent = R$(total()); pixBox();
+  const semCobranca = cart.length > 0 && total() === 0, fpEl = $('fp'), fpLab = fpEl && fpEl.previousElementSibling;   // total zero: esconde as formas de pagamento
+  if (fpEl) fpEl.style.display = semCobranca ? 'none' : ''; if (fpLab && fpLab.tagName === 'LABEL') fpLab.style.display = semCobranca ? 'none' : '';
 }
 document.querySelectorAll('#fp div').forEach(d => d.onclick = () => { forma = d.dataset.f; document.querySelectorAll('#fp div').forEach(x => x.classList.toggle('on', x === d)); pixBox(); renderResumo(); });
 async function copiarPix() {
@@ -347,6 +355,7 @@ async function copiarPix() {
 }
 function pixBox() {
   const b = $('pixBox'); b.innerHTML = '';
+  if (cart.length && total() === 0) { b.innerHTML = '<div class="pinfo">✅ Este pedido não tem valor a pagar.</div>'; return; }
   if (forma !== 'Pix') { b.innerHTML = infoPagamento(); return; }
   if (!total()) return;
   const txid = 'EMPORI' + Date.now();
@@ -458,7 +467,7 @@ async function finalizar() {
   if (enviando) return;
   if (!cart.length) return aviso('Sua sacola está vazia');
   const ab = estadoAberto(); if (!ab.ok) return aviso(ab.msg);
-  for (const c of cart) { const p = prods.find(x => x.id === c.id); if (!p || esgotado(p)) return aviso('"' + c.nome + '" não está mais disponível. Retire do pedido para continuar.'); const ex = (c.ads || []).reduce((s, n) => s + (+((p.adicionais || []).find(x => x.nome === n) || {}).preco || 0), 0); let eg = 0; if (c.sel) { const r = calcGrupos(p, c.sel); if (r.erro) return aviso(r.erro); eg = r.extra; } c.extra = r2(ex + eg); c.preco = r2(precoAtual(p) + c.extra); }
+  for (const c of cart) { const p = prods.find(x => x.id === c.id); if (!p || esgotado(p)) return aviso('"' + c.nome + '" não está mais disponível. Retire do pedido para continuar.'); if (temEstoque(p)) { const qt = cart.filter(x => x.id === c.id).reduce((s, x) => s + x.q, 0); if (qt > Math.floor(+p.estoque)) return aviso('Só temos ' + Math.floor(+p.estoque) + ' unidade(s) de "' + c.nome + '" em estoque. Diminua a quantidade.'); } const ex = (c.ads || []).reduce((s, n) => s + (+((p.adicionais || []).find(x => x.nome === n) || {}).preco || 0), 0); let eg = 0; if (c.sel) { const r = calcGrupos(p, c.sel); if (r.erro) return aviso(r.erro); eg = r.extra; } c.extra = r2(ex + eg); c.preco = r2(precoAtual(p) + c.extra); }
   if (PEDIDO_MIN > 0 && subtotal() < PEDIDO_MIN) return aviso('Pedido mínimo: ' + R$(PEDIDO_MIN) + ' em itens');
   if (!clienteLogado()) { abrir('pConta'); return aviso('Entre com seu telefone para finalizar o pedido'); }
   const ent = lerEntrega(); if (!ent) return;
@@ -468,7 +477,8 @@ async function finalizar() {
     subtotal: r2(subtotal()), frete: freteVal(), total: total(), pagamento: forma, pagamentoQuando: quandoPaga(), entrega: ent,
     status: forma === 'Pix' ? 'Aguardando conferência' : 'Novo', criadoEm: firebase.firestore.FieldValue.serverTimestamp()
   };
-  const ref = db.collection('pedidos').doc(), cont = db.collection('config').doc('contador'), per = chavePeriodo();
+  if (ped.total === 0) { ped.pagamento = 'Sem cobrança'; ped.status = 'Novo'; }   // item de R$ 0,00 sem complementos pagos: não há o que cobrar (nem Pix)
+  const ref = db.collection('pedidos').doc(), cont =db.collection('config').doc('contador'), per = chavePeriodo();
   enviando = true; aviso('Enviando seu pedido...');
   try { const f = window.tirarFotoPedido && window.tirarFotoPedido(); if (f) ped.foto = f; } catch (e) {}   // foto do cliente no momento do pedido (se a câmera estiver ligada)
   try {
@@ -481,8 +491,16 @@ async function finalizar() {
         const p = P[l.id]; if (!p || p.ativo === false || p.indisponivel === true) throw new Error('"' + l.nome + '" não está mais disponível.');
         if (Math.abs(precoAtual(p) + (l.extra || 0) - l.preco) > 0.004) throw new Error('O preço de "' + l.nome + '" mudou. Confira a sacola e tente de novo.');
       });
+      // estoque: confere a quantidade pedida de cada item e prepara a baixa (feita na mesma transação do pedido)
+      const qt = {}, baixas = []; ped.itens.forEach(l => qt[l.id] = (qt[l.id] || 0) + l.q);
+      Object.keys(qt).forEach(id => {
+        const p = P[id]; if (!temEstoque(p)) return; const resta = Math.floor(+p.estoque);
+        if (qt[id] > resta) throw new Error(resta > 0 ? 'Só temos ' + resta + ' unidade(s) de "' + p.nome + '" em estoque. Diminua a quantidade.' : '"' + p.nome + '" esgotou.');
+        baixas.push([id, resta - qt[id]]);
+      });
       const c = d.exists ? d.data() : {};
       ped.numero = c.p === per ? (c.n || 0) + 1 : 1;
+      baixas.forEach(([id, n]) => t.update(db.collection('produtos').doc(id), { estoque: n }));
       t.set(cont, { n: ped.numero, p: per }); t.set(ref, ped);
     });
   } catch (e) {
@@ -492,7 +510,7 @@ async function finalizar() {
   enviando = false;
   if (ent.tipo === 'Entrega') { perfil.end = ent.endereco; db.collection('clientes').doc(user.uid).set({ end: ent.endereco }, { merge: true }).catch(() => {}); }   // guarda o endereço para a próxima vez
   const entTxt = ent.tipo === 'Uber Flash' ? '*Uber Flash* (o cliente chama o motoboy para retirar no restaurante)' + (RETIRADA.endereco ? '\n' + txtRetirada() : '') : ent.tipo === 'Retirada' ? '*Retirada no restaurante*' + (RETIRADA.endereco ? '\n' + txtRetirada() : '') : '*Entrega*\n' + txtEnd(ent.endereco) + (ped.frete ? '\n*Frete:* ' + R$(ped.frete) : '');
-  const msg = `*NOVO PEDIDO · ${NOME}*\nPedido nº ${fmtNum(ped.numero)}\n\n*Cliente*\n${ped.cliente.nome}\nWhatsApp: ${fmtTel(ped.cliente.tel)}\n\n*Itens*\n` + ped.itens.map(c => `${c.q}× ${c.nome} — ${R$(c.preco * c.q)}${c.det ? '\n   ↳ ' + c.det : ''}`).join('\n') + `\n\n${entTxt}\n\n*Pagamento:* ${pagTxt(forma, ped.pagamentoQuando)}\n*Total:* ${R$(ped.total)}`;
+  const msg = `*NOVO PEDIDO · ${NOME}*\nPedido nº ${fmtNum(ped.numero)}\n\n*Cliente*\n${ped.cliente.nome}\nWhatsApp: ${fmtTel(ped.cliente.tel)}\n\n*Itens*\n` + ped.itens.map(c => `${c.q}× ${c.nome} — ${R$(c.preco * c.q)}${c.det ? '\n   ↳ ' + c.det : ''}`).join('\n') + `\n\n${entTxt}\n\n*Pagamento:* ${pagTxt(ped.pagamento, ped.pagamentoQuando)}\n*Total:* ${R$(ped.total)}`;
   // Totem: o pedido não abre o WhatsApp sozinho; o restaurante recebe pelo painel admin e pelos avisos.
   cart = []; $('qtd').textContent = 0; fechar(); posPedido();
 }
