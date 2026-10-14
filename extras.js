@@ -68,7 +68,7 @@
     const doItem = ids.map(id => G.find(g => g.id === id)).filter(Boolean);
     return (doItem.length ? doItem : (Array.isArray(p.complementos) ? p.complementos : [])).map(normG).filter(g => g.opcoes.length);
   };
-  const gOmax = (g, o) => Math.max(1, Math.min(+o.max || 1, +g.max || 1));
+  const gOmax = (g, o) => g.repete ? Math.max(1, +g.max || 1) : Math.max(1, Math.min(+o.max || 1, +g.max || 1));   // grupo com "repete": toda opção pode ser escolhida várias vezes (até o máximo do grupo)
   const gLimite = g => g.min > 0 ? (g.min === g.max ? 'Escolha ' + g.max : 'Escolha de ' + g.min + ' a ' + g.max) : (g.max === 1 ? 'Escolha 1 (opcional)' : 'Escolha até ' + g.max);
   const gRegraTxt = g => ({ media: 'Cobra a média dos preços escolhidos', maior: 'Cobra a opção mais cara escolhida', menor: 'Cobra a opção mais barata escolhida' })[g.regra] || '';
   // Preço e texto dos complementos. frouxo = true ignora o mínimo (para mostrar o preço enquanto o cliente ainda escolhe).
