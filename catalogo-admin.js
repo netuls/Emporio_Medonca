@@ -104,6 +104,8 @@ function cgAbrir(g) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div><label>Mínimo de escolhas</label><input id="cgMin" type="number" min="0" max="20" inputmode="numeric" value="${cgEd.min}" style="${CGI};margin-bottom:2px"><small style="color:var(--mut)">0 = o cliente pode pular</small></div>
       <div><label>Máximo de escolhas</label><input id="cgMax" type="number" min="1" max="20" inputmode="numeric" value="${cgEd.max}" style="${CGI};margin-bottom:2px"><small style="color:var(--mut)">total de unidades no grupo</small></div></div>
+    <label style="display:flex;gap:8px;align-items:center;margin:12px 0 4px;text-transform:none;letter-spacing:0;font-size:13px;cursor:pointer"><input type="checkbox" id="cgRep" ${cgEd.repete ? 'checked' : ''} style="width:auto;margin:0"> Permitir escolher a mesma opção mais de uma vez (mostra o + e o − em todas as opções, até o máximo do grupo)</label>
+    <small style="display:block;color:var(--mut);margin-bottom:6px">Ex.: grupo com máximo 3 e esta caixa marcada: o cliente pode levar 2 "Misto" e 1 "Queijo". Se o máximo do grupo for 1, não tem + (é escolha única).</small>
     <label style="display:block;margin-top:10px">Como cobrar</label>
     <select id="cgR" onchange="cgRegraTxt()" style="${CGI};margin-bottom:2px">${Object.entries(CG_REGRAS).map(([k, v]) => `<option value="${k}" ${cgEd.regra === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
     <small id="cgRt" style="display:block;color:var(--mut);margin-bottom:12px"></small>
@@ -139,9 +141,9 @@ async function cgSalvar() {
   if (!ops.length) return alert('Adicione pelo menos uma opção com nome.');
   const max = Math.max(1, Math.min(20, parseInt($('cgMax').value) || 1)), min = Math.max(0, parseInt($('cgMin').value) || 0);
   if (min > max) return alert('O mínimo não pode ser maior que o máximo.');
-  const cap = ops.reduce((a, o) => a + Math.min(o.max, max), 0);
+  const rep = $('cgRep').checked, cap = rep ? ops.length * max : ops.reduce((a, o) => a + Math.min(o.max, max), 0);
   if (min > cap) return alert('Com essas opções o cliente só consegue escolher ' + cap + ', mas o mínimo é ' + min + '. Adicione opções ou aumente o "Máx." de alguma.');
-  const g = { id: cgEd.id, nome, min, max, regra: $('cgR').value, opcoes: ops };
+  const g = { id: cgEd.id, nome, min, max, regra: $('cgR').value, repete: rep, opcoes: ops };
   const lista = CG.slice(), ix = lista.findIndex(x => x.id === g.id); if (ix >= 0) lista[ix] = g; else lista.push(g);
   if (lista.length > 40) return alert('Limite de 40 grupos.');
   const marcados = [...document.querySelectorAll('#cgUso input:checked')].map(x => x.value), P = cgProds(), F = firebase.firestore.FieldValue, btn = $('cgS'); btn.disabled = true;
