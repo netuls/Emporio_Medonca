@@ -495,7 +495,7 @@ async function finalizar() {
   if (ped.total === 0) { ped.pagamento = 'Sem cobrança'; ped.status = 'Novo'; }   // item de R$ 0,00 sem complementos pagos: não há o que cobrar (nem Pix)
   const ref = db.collection('pedidos').doc(), cont =db.collection('config').doc('contador'), per = chavePeriodo();
   enviando = true; aviso('Enviando seu pedido...');
-  try { const f = window.tirarFotoPedido && window.tirarFotoPedido(); if (f) ped.foto = f; } catch (e) {}   // foto do cliente no momento do pedido (se a câmera estiver ligada)
+  try { const f = window.tirarFotoPedido && window.tirarFotoPedido(); if (typeof f === 'string' && f.startsWith('data:image') && f.length < 800000) { ped.foto = f; ped.temFoto = true; } } catch (e) {}   // temFoto: o painel acha e apaga as fotos com mais de 24h; o limite de tamanho evita recusar o pedido (documento do Firestore tem no máx. 1 MB)   // foto do cliente no momento do pedido (se a câmera estiver ligada)
   try {
     await db.runTransaction(async t => {
       // leituras primeiro: contador e itens do cardápio; depois grava o número e o pedido juntos
