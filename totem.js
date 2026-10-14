@@ -27,6 +27,15 @@ body.wopen{overflow:hidden}`;
     setInterval(window.buscarSW, 30 * 60 * 1000);   // procura versão nova a cada 30 min
   }
 
+  // Aviso ao cliente: com a câmera ligada no painel, a foto é registrada ao finalizar e apagada em 24 horas
+  (function () {
+    const btn = document.getElementById('btnFin'); if (!btn || typeof db === 'undefined') return;
+    const p = document.createElement('p'); p.id = 'fotoAviso'; p.style.cssText = 'display:none;margin:0 0 12px;font-size:12px;color:var(--mut);text-align:center';
+    p.textContent = '📷 Ao finalizar, uma foto sua é registrada para identificar o pedido e apagada em 24 horas.';
+    btn.parentNode.insertBefore(p, btn);
+    db.collection('config').doc('loja').onSnapshot(s => { const c = (s.data() || {}).camera || {}; p.style.display = c.ativo ? 'block' : 'none'; }, () => {});
+  })();
+
   function pintaStatus() { try { st.textContent = typeof estadoAberto === 'function' ? estadoAberto().curto : ''; } catch (e) {} }
   function mostrar() {
     if (atualizar) return location.reload();   // há versão nova esperando: aproveita que o totem está na tela inicial
