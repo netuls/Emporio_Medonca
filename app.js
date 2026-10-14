@@ -144,7 +144,10 @@ function add(id) {
   QTD[id] = 1; const q = $('q' + id); if (q) q.textContent = 1;
   const box = $('o' + id); if (box) { box.querySelectorAll('input[type=checkbox]').forEach(x => x.checked = false); const ob = $('ob' + id); if (ob) ob.value = ''; const d = box.closest('details'); if (d) d.open = false; }
   precoLinha(id); atualizaSacola(); aviso(n > 1 ? n + ' itens adicionados à sacola' : 'Item adicionado à sacola');
+  if (!clienteLogado()) setTimeout(() => { if (!clienteLogado()) { abrir('pConta'); aviso('Entre com seu telefone para continuar o pedido'); } }, 700);   // o item fica na sacola; pede o login logo depois
 }
+// Cliente "logado" = entrou pelo telefone (não vale visitante anônimo) e tem cadastro completo
+const clienteLogado = () => !!(user && !user.isAnonymous && perfil && perfil.nome && perfil.tel);
 const atualizaSacola = () => { const n = cart.reduce((a, c) => a + c.q, 0); $('qtd').textContent = n; const b = $('cbarN'), t = $('cbarT'), bar = $('cbar'); if (b) b.textContent = n + (n === 1 ? ' item' : ' itens'); if (t) t.textContent = R$(subtotal()); if (bar) bar.classList.toggle('on', n > 0); };
 // + e − direto na sacola
 function mudaQ(i, d) {
@@ -448,7 +451,7 @@ async function finalizar() {
   const ab = estadoAberto(); if (!ab.ok) return aviso(ab.msg);
   for (const c of cart) { const p = prods.find(x => x.id === c.id); if (!p || esgotado(p)) return aviso('"' + c.nome + '" não está mais disponível. Retire do pedido para continuar.'); const ex = (c.ads || []).reduce((s, n) => s + (+((p.adicionais || []).find(x => x.nome === n) || {}).preco || 0), 0); let eg = 0; if (c.sel) { const r = calcGrupos(p, c.sel); if (r.erro) return aviso(r.erro); eg = r.extra; } c.extra = r2(ex + eg); c.preco = r2(precoAtual(p) + c.extra); }
   if (PEDIDO_MIN > 0 && subtotal() < PEDIDO_MIN) return aviso('Pedido mínimo: ' + R$(PEDIDO_MIN) + ' em itens');
-  if (!user || !perfil.nome) { abrir('pConta'); return aviso('Informe seus dados para finalizar'); }
+  if (!clienteLogado()) { abrir('pConta'); return aviso('Entre com seu telefone para finalizar o pedido'); }
   const ent = lerEntrega(); if (!ent) return;
   const ped = {
     uid: user.uid, cliente: { nome: (perfil.nome + ' ' + (perfil.sobrenome || '')).trim(), tel: perfil.tel },
