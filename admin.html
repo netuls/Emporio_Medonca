@@ -38,7 +38,7 @@
 <label>Cidade (máx. 15 letras)</label><input id="pxc" maxlength="15" placeholder="Fortaleza">
 <button class="btn" onclick="salvarPix()">Salvar Pix</button></div>
 <div class="sec" id="cam-sec"><h2 class="pt">CÂMERA DO TOTEM</h2>
-<p class="rd">Mostra a imagem da webcam do computador num canto da tela do cliente, para ele se ver (efeito espelho). A imagem aparece só na tela: não é gravada nem enviada. O navegador pede permissão da câmera na primeira vez; toque em <b>Permitir</b> no computador do totem.</p>
+<p class="rd">Mostra a imagem da webcam do computador num canto da tela do cliente, para ele se ver (efeito espelho). Quando o cliente finaliza o pedido, uma foto é registrada e aparece em <b>Fotos dos clientes</b> no painel por 24 horas; depois é apagada. O site avisa o cliente antes de finalizar. O navegador pede permissão da câmera na primeira vez; toque em <b>Permitir</b> no computador do totem.</p>
 <label>Câmera na tela do cliente</label><select id="camA"><option value="0">Desligada</option><option value="1">Ligada</option></select>
 <label>Posição na tela</label><select id="camP"><option value="be">Canto inferior esquerdo</option><option value="bd">Canto inferior direito</option><option value="te">Canto superior esquerdo</option><option value="td">Canto superior direito</option></select>
 <label>Tamanho</label><select id="camT"><option value="p">Pequeno</option><option value="m">Médio</option><option value="g">Grande</option></select>
@@ -74,6 +74,7 @@
 <div class="toast" id="toast"></div><script src="config.js"></script><script src="pix.js"></script><script src="admin.js"></script>
 <script src="admin-extras.js"></script>
 <script src="catalogo-admin.js"></script>
+<script src="fotos-admin.js"></script>
 <script>
 async function reiniciarContagem() {
   if (!confirm('Reiniciar a contagem? O próximo pedido será o nº 01.')) return;
