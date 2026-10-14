@@ -3,7 +3,14 @@ let prods = [], cart = [], cat = 'Todos', forma = 'Pix', user = null, perfil = {
 const $ = id => document.getElementById(id);
 let INSTA = '';
 function renderInsta() { const a = $('insta'); if (!a) return; a.style.display = INSTA ? '' : 'none'; a.href = INSTA ? 'https://instagram.com/' + encodeURIComponent(INSTA) : '#'; a.title = INSTA ? '@' + INSTA : ''; }
-const abrir = id => { fechar(); $(id).classList.add('on'); if (id === 'pCarrinho') renderCarrinho(); };
+const abrir = id => {
+  fechar();
+  // Sem login, a sacola não abre: vai direto para entrar/cadastrar (depois do login, a sacola abre sozinha)
+  if (id === 'pCarrinho' && !clienteLogado()) id = 'pConta';
+  // Garante que o formulário de login apareça quando a pessoa ainda não tem cadastro
+  if (id === 'pConta' && !(perfil && perfil.nome)) { const l = $('fLogin'), p = $('fPedidos'); if (l) l.style.display = 'block'; if (p) p.style.display = 'none'; }
+  $(id).classList.add('on'); if (id === 'pCarrinho') renderCarrinho();
+};
 const fechar = () => document.querySelectorAll('.ov').forEach(o => o.classList.remove('on'));
 const aviso = m => { const t = $('toast'); t.textContent = m; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3200); };
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
