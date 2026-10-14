@@ -18,8 +18,19 @@ body.wopen{overflow:hidden}`;
   const W = document.getElementById('welcome'), go = document.getElementById('wGo'), st = document.getElementById('wSt');
   if (!W || !go) return;
 
+  // Versão nova do site: o totem se atualiza sozinho, mas só na tela inicial (nunca no meio do pedido de um cliente)
+  let atualizar = false;
+  if ('serviceWorker' in navigator) {
+    const tinha = !!navigator.serviceWorker.controller;   // na primeira visita não precisa recarregar
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (!tinha) return; atualizar = true; if (!W.classList.contains('off')) location.reload(); });
+    window.buscarSW = () => navigator.serviceWorker.getRegistration().then(r => r && r.update()).catch(() => {});
+    setInterval(window.buscarSW, 30 * 60 * 1000);   // procura versão nova a cada 30 min
+  }
+
   function pintaStatus() { try { st.textContent = typeof estadoAberto === 'function' ? estadoAberto().curto : ''; } catch (e) {} }
   function mostrar() {
+    if (atualizar) return location.reload();   // há versão nova esperando: aproveita que o totem está na tela inicial
+    if (window.buscarSW) window.buscarSW();
     pintaStatus(); W.classList.remove('off'); document.body.classList.add('wopen');
     if (typeof fechar === 'function') fechar();
     const m = document.getElementById('xm'); if (m) m.remove();   // fecha a janela de produto, se estiver aberta
