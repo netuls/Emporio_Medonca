@@ -378,12 +378,9 @@ auth.onAuthStateChanged(u => { user = u; if (!u) { atualizarConta(); auth.signIn
 // Entrar / proteger a conta com Google. Cliente anônimo: vincula o Google à mesma conta (os pedidos continuam). Aparelho novo: entra e recupera o histórico.
 function renderSeguranca() {
   const box = (id, pai) => { let b = $(id); if (!b) { b = document.createElement('div'); b.id = id; b.style.cssText = 'margin-top:18px;padding-top:14px;border-top:1px solid var(--line)'; $(pai).appendChild(b); } return b; };
-  const L = box('gBoxL', 'fLogin'), P = box('gBoxP', 'fPedidos'), logado = user && !user.isAnonymous;
-  L.style.display = logado ? 'none' : 'block';
-  L.innerHTML = '<p style="color:var(--mut);font-size:13px;margin:0 0 10px">Já pediu antes ou quer guardar seus pedidos?</p><button class="btn o" style="width:100%" onclick="entrarGoogle()">Logar com o Google</button>';
-  P.innerHTML = logado
-    ? '<p style="color:var(--mut);font-size:13px;margin:0 0 10px">Conectado como ' + esc(user.email || user.displayName || 'Google') + '</p><button class="btn o" style="width:100%" onclick="sairConta()">Sair</button>'
-    : '<p style="color:var(--mut);font-size:13px;margin:0 0 10px">Seus pedidos estão salvos só neste aparelho. Se você limpar o navegador ou trocar de celular, perde o histórico.</p><button class="btn o" style="width:100%;margin-bottom:8px" onclick="entrarGoogle()">Logar com o Google</button><button class="btn o" style="width:100%" onclick="sairConta()">Sair</button>';
+  const L = box('gBoxL', 'fLogin'), P = box('gBoxP', 'fPedidos');
+  L.style.display = 'none';   // totem: não tem login com Google, o cliente entra pelo telefone
+  P.innerHTML = '<button class="btn o" style="width:100%" onclick="sairTotem()">Sair</button>';
 }
 async function entrarGoogle() {
   const prov = new firebase.auth.GoogleAuthProvider();
@@ -403,26 +400,28 @@ async function sairConta() {
 }
 
 function editarDados() { $('fLogin').style.display = 'block'; $('fPedidos').style.display = 'none'; }
+// Totem: o telefone é o "login". O mesmo telefone sempre cai na mesma conta (mesmo cadastro, mesmos pedidos), mesmo depois de sair.
+// Por baixo é uma conta de e-mail/senha do Firebase gerada a partir do número (não é segurança: quem digita o número entra na conta dele).
+const TOTEM_DOM = '@totem.local', senhaTotem = t => 'tt' + t + 'x';
+async function entrarPorTelefone(tel, podeCriar) {
+  const email = tel + TOTEM_DOM, senha = senhaTotem(tel);
+  try { return (await auth.signInWithEmailAndPassword(email, senha)).user; }
+  catch (e) {
+    if (!['auth/user-not-found', 'auth/invalid-credential', 'auth/invalid-login-credentials', 'auth/wrong-password'].includes(e.code)) throw e;
+    if (!podeCriar) throw new Error('NOVO');   // número que ainda não tem cadastro e o cliente não informou o nome
+    return (await auth.createUserWithEmailAndPassword(email, senha)).user;
+  }
+}
 async function salvarDados() {
   const nome = $('cNome').value.trim(), sobrenome = $('cSob').value.trim(), tel = $('cTel').value.replace(/\D/g, '').replace(/^55(?=\d{10,11}$)/, '');
-  if (!nome || !sobrenome) return aviso('Informe nome e sobrenome');
   if (!/^\d{10,11}$/.test(tel)) return aviso('Telefone inválido: use DDD + número');
   try {
-    if (!user) user = (await auth.signInAnonymously()).user;
-    const novo = { ...perfil, nome, sobrenome, tel }, telAntigo = perfil.tel;
-    const telRef = db.collection('telefones').doc(tel), antRef = (telAntigo && telAntigo !== tel) ? db.collection('telefones').doc(telAntigo) : null;
-    await db.runTransaction(async t => {   // um telefone = um cadastro: a reserva e o cadastro são gravados juntos
-      const d = await t.get(telRef), a = antRef ? await t.get(antRef) : null;
-      if (d.exists && d.data().uid !== user.uid) throw new Error('TEL_EM_USO');
-      t.set(telRef, { uid: user.uid });
-      t.set(db.collection('clientes').doc(user.uid), novo);
-      if (a && a.exists && a.data().uid === user.uid) t.delete(antRef);   // libera o número antigo se o cliente trocou de telefone
-    });
-    perfil = novo; perfilUid = user.uid;
-  } catch (e) {
-    if (e.message === 'TEL_EM_USO') return aviso('Esse número já tem cadastro. Toque em "Logar com o Google" para entrar na sua conta.');
-    return err(e);
-  }
+    if (!user || user.email !== tel + TOTEM_DOM) user = await entrarPorTelefone(tel, !!(nome && sobrenome));
+    const ex = (await db.collection('clientes').doc(user.uid).get()).data() || {}, n = nome || ex.nome, sn = sobrenome || ex.sobrenome;
+    if (!n || !sn) return aviso('Informe nome e sobrenome');
+    perfil = { ...ex, nome: n, sobrenome: sn, tel }; perfilUid = user.uid; endTocado = false;
+    await db.collection('clientes').doc(user.uid).set(perfil);
+  } catch (e) { return e.message === 'NOVO' ? aviso('Número novo: informe também nome e sobrenome') : err(e); }
   await atualizarConta(); visitado = null; registrarVisita(); aviso('Dados salvos!'); cart.length ? abrir('pCarrinho') : fechar();
 }
 const fmtTel = t => t.length === 11 ? `(${t.slice(0, 2)}) ${t.slice(2, 7)}-${t.slice(7)}` : t.length === 10 ? `(${t.slice(0, 2)}) ${t.slice(2, 6)}-${t.slice(6)}` : t;
@@ -535,3 +534,4 @@ function sairTotem() {   // sai da conta deste cliente: o próximo começa do ze
   if (typeof limpaExtras === 'function') limpaExtras();
   fechar(); window.scrollTo({ top: 0 });
 }
+{ const _p = document.querySelector('#fLogin p'); if (_p) _p.textContent = 'Já pediu aqui antes? Digite só o telefone. Cliente novo: nome, sobrenome e telefone.'; }
