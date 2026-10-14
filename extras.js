@@ -155,6 +155,7 @@
 
   function abrirModal(id) {
     const p = prods.find(x => x.id === id); if (!p || esgotado(p)) return;
+    const lim = estRest(p); if (lim < 1) return aviso('Você já adicionou todo o estoque disponível deste item');   // estoque: já está tudo na sacola
     fechaModal();
     const gr = gruposDe(p), ads = gr.length ? [] : (p.adicionais || []), rm = p.remover || []; let q = 1;   // com complementos, os adicionais antigos não aparecem
     const S = {};   // S[idDoComplemento][indiceDaOpcao] = quantidade escolhida
@@ -172,7 +173,7 @@
     m.innerHTML = '<div class="xm-box' + (p.img ? '' : ' xm-noimg') + '"><div class="xm-img">' + (p.img ? '<img src="' + esc(p.img) + '" alt="' + esc(p.nome) + '">' : '') + '</div>'
       + '<div class="xm-side"><div class="xm-top"><span>Detalhes do produto</span><button class="xm-x" type="button" aria-label="Fechar">✕</button></div><div class="xm-body">'
       + '<div class="xm-card"><h3>' + esc(p.nome) + '</h3>' + (p.desc ? '<p>' + esc(p.desc) + '</p>' : '')
-      + '<div class="xm-pr">' + (emPromo(p) ? '<s>' + R$(p.preco) + '</s>' : '') + R$(precoAtual(p)) + '</div></div>'
+      + '<div class="xm-pr">' + (emPromo(p) ? '<s>' + R$(p.preco) + '</s>' : '') + R$(precoAtual(p)) + '</div>' + (temEstoque(p) && lim <= 10 ? '<p style="margin:8px 0 0">Restam ' + lim + ' em estoque</p>' : '') + '</div>'
       + '<div id="xmG">' + gHtml() + '</div>'
       + (ads.length ? '<div class="xm-sec"><h4>' + esc(p.adTitulo || 'Adicionais') + '</h4><small>Escolha quantos quiser</small>' + ads.map((x, i) => '<label class="xm-opt"><span>' + esc(x.nome) + (+x.preco > 0 ? '<em>+ ' + R$(x.preco) + '</em>' : '') + '</span><input type="checkbox" data-k="a" data-i="' + i + '"></label>').join('') + '</div>' : '')
       + (rm.length ? '<div class="xm-sec"><h4>Retirar ingredientes</h4><small>Marque o que você não quer</small>' + rm.map((x, i) => '<label class="xm-opt"><span>Sem ' + esc(x) + '</span><input type="checkbox" data-k="r" data-i="' + i + '"></label>').join('') + '</div>' : '')
@@ -217,7 +218,7 @@
       if (og) return gMuda(og.dataset.g, +og.dataset.i, og.querySelector('.gck.on') ? -1 : 1);
       if (ob) return gMuda(ob.dataset.g, +ob.dataset.i, +ob.dataset.d);
       if (t.closest('.xm-mn')) { q = Math.max(1, q - 1); atualiza(); }
-      else if (t.closest('.xm-pl')) { q = Math.min(20, q + 1); atualiza(); }
+      else if (t.closest('.xm-pl')) { if (q >= lim) aviso('Só restam ' + lim + ' unidade(s) deste item'); q = Math.min(20, lim, q + 1); atualiza(); }
       else if (t.closest('.xm-add')) adicionar();
     });
     atualiza();
