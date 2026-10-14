@@ -572,16 +572,16 @@ const medeCab = () => { const h = document.querySelector('header'); if (h) docum
 addEventListener('resize', medeCab); addEventListener('load', medeCab); medeCab(); renderStatus(); atualizaSacola();
 
 // ── Totem: depois de cada pedido, pergunta se quer pedir mais ou sair; sair libera o aparelho para o próximo cliente ──
-const SAIR_EM = 30; let sairT = null;   // segundos até sair sozinho se ninguém tocar na tela
+const SAIR_EM = 6; let sairT = null;   // segundos até sair sozinho se ninguém tocar na tela
 function posPedido() {
   let m = $('pPos');
   if (!m) {
     m = document.createElement('div'); m.id = 'pPos'; m.className = 'ov'; m.style.cssText = 'justify-content:center;align-items:center';
-    m.innerHTML = '<div class="pn" style="height:auto;max-width:420px;text-align:center;border-radius:20px"><h2 class="pt">PEDIDO REGISTRADO!</h2><p style="color:var(--mut);margin:0 0 20px">Deseja pedir mais alguma coisa?</p><button class="btn" style="width:100%;margin-bottom:8px" onclick="continuarTotem()">Pedir mais</button><button class="btn o" id="pPosSair" style="width:100%" onclick="sairTotem()">Sair</button></div>';
+    m.innerHTML = '<div class="pn" style="height:auto;max-width:420px;text-align:center;border-radius:20px"><h2 class="pt">PEDIDO REGISTRADO!</h2><p style="color:var(--mut);margin:0 0 20px">Obrigado! Já estamos preparando o seu pedido.</p><button class="btn" id="pPosSair" style="width:100%" onclick="sairTotem()">Novo pedido</button></div>';
     document.body.appendChild(m);
   }
   fechar(); m.classList.add('on');
-  let n = SAIR_EM; const b = $('pPosSair'), pinta = () => b.textContent = 'Sair (' + n + 's)';
+  let n = SAIR_EM; const b = $('pPosSair'), pinta = () => b.textContent = 'Novo pedido (' + n + 's)';
   pinta(); clearInterval(sairT); sairT = setInterval(() => { if (--n <= 0) sairTotem(); else pinta(); }, 1000);
 }
 function continuarTotem() { clearInterval(sairT); const m = $('pPos'); if (m) m.classList.remove('on'); }
