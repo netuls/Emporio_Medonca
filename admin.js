@@ -74,6 +74,11 @@ auth.onAuthStateChanged(u => {
   $('login').style.display = ok ? 'none' : 'block'; $('app').style.display = ok ? 'block' : 'none';
   if (ok) iniciar();
 });
+window.verFoto = function (src) {
+  const o = document.createElement('div'); o.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:pointer';
+  const i = document.createElement('img'); i.src = src; i.style.cssText = 'max-width:92%;max-height:92%;border-radius:12px;image-rendering:auto';
+  o.appendChild(i); o.onclick = () => o.remove(); document.body.appendChild(o);
+};
 function iniciar() {
   ouvirPush(); ajustarLayout(); criarBotaoVenda();
   db.collection('config').doc('loja').onSnapshot(s => { CFG = s.data() || {}; NOME_LOJA = CFG.nome || NOME_GER; SLOGAN_LOJA = CFG.slogan !== undefined ? CFG.slogan : SLOGAN_GER; document.title = NOME_LOJA + ' · Admin'; if (!ajInit) { ajInit = true; preencherAjustes(); if (typeof montarAparencia === 'function') montarAparencia(); montarFuncionamento(); preencherFuncionamento(); montarGaleria(); montarUber(); montarEntregaOpc(); } renderBairros(); pintarPausa(); prepararLogoImpressao(); });
@@ -87,7 +92,7 @@ function iniciar() {
     $('peds').innerHTML = s.docs.map(d => { const p = d.data(), id = d.id, sc = STIDX[p.status] ?? 0, ent = p.entrega, end = ent && ent.endereco;
       const entHtml = !ent ? '' : ent.tipo === 'Uber Flash' ? '<br><small>🛵 Uber Flash · o cliente chama o motoboy</small>' : ent.tipo === 'Retirada' ? '<br><small>🏬 Retirada no restaurante</small>' : '<br><small>📍 <a href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(txtEnd(end)) + '" target="_blank" rel="noopener" style="color:inherit">' + esc(end.rua) + ', ' + esc(end.numero) + (end.complemento ? ' (' + esc(end.complemento) + ')' : '') + ' - ' + esc(end.bairro) + ', ' + esc(end.cidade) + '</a>' + (end.ref ? '<br>Ref.: ' + esc(end.ref) : '') + '</small>';
       const b = (txt, cls, st) => `<button class="ab ${cls}" ${p.status === st ? 'disabled' : ''} onclick="setStatus('${id}','${st}')">${txt}</button>`;
-      return `<tr><td data-l="Cliente"><b>${esc(p.cliente.nome)}</b><br><small style="color:var(--mut)">Pedido nº ${nPed(id)}${p.origem === 'Manual' ? ' · 🧾 venda manual' : ''}</small>${entHtml}</td><td class="wa" data-l="WhatsApp">${esc(p.cliente.tel)}</td><td data-l="Itens"><small>${p.itens.map(i => esc(i.nome) + (i.det ? ' (' + esc(i.det) + ')' : '') + '×' + i.q).join('<br>')}</small></td>
+      return `<tr><td data-l="Cliente"><b>${esc(p.cliente.nome)}</b><br><small style="color:var(--mut)">Pedido nº ${nPed(id)}${p.origem === 'Manual' ? ' · 🧾 venda manual' : ''}</small>${typeof p.foto === 'string' && p.foto.startsWith('data:image/jpeg;base64,') ? '<br><img src="' + p.foto + '" alt="Foto do cliente" title="Toque para ampliar" onclick="verFoto(this.src)" style="width:72px;height:54px;object-fit:cover;border-radius:8px;margin-top:6px;cursor:pointer;border:1px solid var(--bd,#ccc)">' : ''}${entHtml}</td><td class="wa" data-l="WhatsApp">${esc(p.cliente.tel)}</td><td data-l="Itens"><small>${p.itens.map(i => esc(i.nome) + (i.det ? ' (' + esc(i.det) + ')' : '') + '×' + i.q).join('<br>')}</small></td>
       <td data-l="Data">${p.criadoEm ? p.criadoEm.toDate().toLocaleString('pt-BR') : ''}</td><td data-l="Pagamento">${esc(p.pagamento)}${p.pagamentoQuando ? '<br><small style="color:var(--mut)">' + esc(({ 'Na entrega': 'na entrega', 'Na retirada': 'na retirada', 'Antecipado': 'pago antecipado' })[p.pagamentoQuando] || p.pagamentoQuando) + '</small>' : ''}</td><td data-l="Valor">${R$(p.total)}${p.frete ? '<br><small style="color:var(--mut)">frete ' + R$(p.frete) + '</small>' : ''}</td>
       <td data-l="Status"><span class="st s${sc}">${esc(p.status)}</span></td>
       <td class="acoes">${b('Confirmar', 'b', 'Confirmado')}${b('Em preparo', 'p', 'Em preparo')}${b('Saiu p/ entrega', 'c', 'Saiu para entrega')}${b('Entregue', 'g', 'Entregue')}${b('Cancelar', 'r', 'Cancelado')}
@@ -674,7 +679,7 @@ async function clApagar(id) {
   try {
     const b = db.batch(); b.delete(db.collection('clientes').doc(id)); b.delete(db.collection('visitas').doc(id));
     const tel = String(c.tel || '').replace(/\D/g, '');
-    if (tel) { const r = await db.collection('telefones').doc(tel).get(); if (r.exists && r.data().uid === id) b.delete(r.ref); }   // libera o telefone para um novo cadastro
+    if (tel) { try { const r = await db.collection('telefones').doc(tel).get(); if (r.exists && r.data().uid === id) b.delete(r.ref); } catch (e) { /* coleção sem regra publicada: segue e apaga o resto */ } }   // libera o telefone para um novo cadastro
     await b.commit();
     clL = clL.filter(x => x.id !== id); clRender(); avisoAdm('Cliente apagado');
   } catch (e) { alert('Erro ao apagar: ' + e.message); }
@@ -1043,4 +1048,4 @@ function analisarFundoLogo(px, w, h) {
     if (tirarFundo) { try { fundoEscuroParaTransparente(px, w, h); } catch (e) {} }   // antes de recortar as margens
     return orig(px, w, h, tirarFundo);
   };
-})(); 
+})();
