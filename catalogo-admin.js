@@ -1,6 +1,8 @@
 // ── Aba "Catálogo" do painel admin: grupos de complementos + itens do cardápio ──
 // Carregue DEPOIS do admin.js. Os grupos ficam em config/loja (campo "complementos"); cada item guarda os ids em "grupos".
-let CG = [], cgEd = null, cgMoved = false;
+let CG = [], cgEd = null, cgMoved = false, EC = {};   // EC = estoque dos complementos (coleção estoqueComp: um documento por opção, campo n)
+const ecHex = s => Array.from(new TextEncoder().encode(String(s || '').trim().toLowerCase())).map(b => b.toString(16).padStart(2, '0')).join('');
+const ecKey = (g, o) => g.id + '_k' + ecHex(o.nome);   // mesma chave usada pelo site do cliente
 const CGI = 'width:100%;box-sizing:border-box;padding:10px;margin:0 0 8px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--tx);font-size:14px';
 const CG_REGRAS = { soma: 'Somar tudo', media: 'Média das escolhidas', maior: 'Pela mais cara', menor: 'Pela mais barata' };
 const CG_REGRA_AJ = {
@@ -50,6 +52,9 @@ function stkRender() {
   L.innerHTML = P.length ? '<div style="display:grid;grid-template-columns:1fr 100px 110px;gap:6px;font-size:12px;color:var(--mut);margin-bottom:4px"><span>Item</span><span>Preço (R$)</span><span>Estoque</span></div>'
     + P.map(([id, p]) => `<div style="display:grid;grid-template-columns:1fr 100px 110px;gap:6px;align-items:center;margin-bottom:6px"><span>${esc(p.nome)}${p.estoque !== undefined && p.estoque !== null && +p.estoque <= 0 ? ' <small style="color:#e5484d">(esgotado)</small>' : ''}</span><input data-stk="p" data-id="${esc(id)}" type="number" step="0.01" min="0" inputmode="decimal" value="${p.preco ?? 0}" style="${I}"><input data-stk="e" data-id="${esc(id)}" type="number" step="1" min="0" inputmode="numeric" placeholder="sem controle" value="${p.estoque ?? ''}" style="${I}"></div>`).join('')
     : '<p class="rd">Cadastre os itens do cardápio primeiro.</p>';
+  // estoque de cada opção dos grupos de complementos (vazio = sem controle)
+  if (CG.length) L.innerHTML += '<h3 style="font-size:14px;margin:20px 0 6px">Estoque dos complementos</h3><p class="rd" style="margin-top:0">Deixe vazio para não controlar. Cada pedido diminui o estoque da opção escolhida e, ao chegar em 0, ela aparece como "Esgotado". Se você mudar o nome de uma opção, o estoque dela recomeça (vazio).</p>'
+    + CG.map(g => `<div style="margin-bottom:12px"><b style="font-size:13px">${esc(g.nome)}</b>` + g.opcoes.map(o => { const k = ecKey(g, o), v = EC[k]; return `<div style="display:grid;grid-template-columns:1fr 110px;gap:6px;align-items:center;margin:4px 0"><span>${esc(o.nome)}${v !== undefined && v <= 0 ? ' <small style="color:#e5484d">(esgotado)</small>' : ''}</span><input data-stk="c" data-key="${esc(k)}" data-name="${esc(o.nome)}" type="number" step="1" min="0" inputmode="numeric" placeholder="sem controle" value="${v ?? ''}" style="${I}"></div>`; }).join('') + '</div>').join('');
 }
 async function stkSalvar() {
   const P = cgProds(), F = firebase.firestore.FieldValue, b = db.batch(); let n = 0;
@@ -61,6 +66,15 @@ async function stkSalvar() {
     const est = eTxt === '' ? null : Math.floor(+eTxt), estAtual = (p.estoque === undefined || p.estoque === null) ? null : Math.floor(+p.estoque);
     const mud = {}; if (preco !== (+p.preco || 0)) mud.preco = preco; if (est !== estAtual) mud.estoque = est === null ? F.delete() : est;
     if (Object.keys(mud).length) { b.update(db.collection('produtos').doc(id), mud); n++; }
+  }
+  for (const el of document.querySelectorAll('#stkL input[data-stk="c"]')) {   // estoque dos complementos
+    const k = el.dataset.key, v = el.value.trim();
+    if (v !== '' && (isNaN(+v) || +v < 0)) return alert('Estoque inválido em "' + el.dataset.name + '".');
+    const atual = Object.prototype.hasOwnProperty.call(EC, k) ? EC[k] : null, novo = v === '' ? null : Math.floor(+v);
+    if (novo === atual) continue;
+    const ref = db.collection('estoqueComp').doc(k);
+    if (novo === null) b.delete(ref); else b.set(ref, { n: novo });
+    n++;
   }
   if (!n) return avisoAdm('Nada para salvar');
   try { await b.commit(); avisoAdm('Preços e estoque salvos (' + n + ' item' + (n > 1 ? 's' : '') + ')'); } catch (e) { alert('Erro ao salvar: ' + e.message); }
@@ -147,6 +161,7 @@ async function cgExcluir(id) {
   try {
     await db.collection('config').doc('loja').set({ complementos: CG.filter(x => x.id !== id) }, { merge: true });
     const b = db.batch(); Object.keys(P).forEach(pid => { if ((P[pid].grupos || []).includes(id)) b.update(db.collection('produtos').doc(pid), { grupos: F.arrayRemove(id) }); });
+    Object.keys(EC).filter(k => k.startsWith(id + '_')).forEach(k => b.delete(db.collection('estoqueComp').doc(k)));   // some o estoque das opções do grupo
     await b.commit(); avisoAdm('Grupo excluído');
   } catch (e) { alert('Erro ao excluir: ' + e.message); }
 }
@@ -155,6 +170,7 @@ function cgIniciar() {
   cgMontarAba();
   db.collection('config').doc('loja').onSnapshot(s => { CG = Array.isArray((s.data() || {}).complementos) ? s.data().complementos : []; cgRender(); }, () => {});
   db.collection('produtos').onSnapshot(() => cgRender(), () => {});
+  db.collection('estoqueComp').onSnapshot(s => { EC = {}; s.docs.forEach(d => { const n = +d.data().n; if (!isNaN(n)) EC[d.id] = Math.floor(n); }); stkRender(); }, () => {});
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', cgMontarAba); else cgMontarAba();
 auth.onAuthStateChanged(u => { if (u && u.email === LOJA.adminEmail && !cgIniciar.ok) { cgIniciar.ok = true; cgIniciar(); } });
