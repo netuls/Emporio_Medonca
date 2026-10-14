@@ -172,7 +172,7 @@ function montarEntrega() {
   const fp = $('fp'); if (!fp || $('entBox')) return;
   const d = document.createElement('div'); d.id = 'entBox'; d.setAttribute('oninput', 'endTocado=true');
   d.innerHTML = `<label>Como você quer receber?</label>
-  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px"><button class="btn" id="eBtE" style="flex:1 1 auto;padding-left:12px;padding-right:12px" onclick="setEntrega('Entrega')">Entrega</button><button class="btn o" id="eBtU" style="flex:1 1 auto;padding-left:12px;padding-right:12px" onclick="setEntrega('Uber Flash')">Uber Flash</button><button class="btn o" id="eBtR" style="flex:1 1 auto;padding-left:12px;padding-right:12px" onclick="setEntrega('Retirada')">Retirarada</button></div>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px"><button class="btn" id="eBtE" style="flex:1 1 auto;padding-left:12px;padding-right:12px" onclick="setEntrega('Entrega')">Entrega</button><button class="btn o" id="eBtU" style="flex:1 1 auto;padding-left:12px;padding-right:12px" onclick="setEntrega('Uber Flash')">Uber Flash</button><button class="btn o" id="eBtR" style="flex:1 1 auto;padding-left:12px;padding-right:12px" onclick="setEntrega('Retirada')">Retirada</button></div>
   <div id="eUber" class="pinfo" style="display:none;margin-bottom:12px"></div>
   <div id="eEnd">
     <label>CEP</label><input id="eCep" inputmode="numeric" maxlength="9" placeholder="00000-000" autocomplete="postal-code" oninput="buscarCep()">
