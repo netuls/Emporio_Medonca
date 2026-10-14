@@ -19,6 +19,20 @@ let GRUPOS_LOJA = [], HORARIOS = null, PAUSADO = false, PEDIDO_MIN = 0, T_ENT = 
 const precoAtual = p => (p.promo > 0 && p.promo < p.preco) ? p.promo : p.preco;
 const emPromo = p => precoAtual(p) < p.preco;
 db.collection('produtos').where('ativo', '==', true).onSnapshot(s => { prods = s.docs.map(d => ({ id: d.id, ...d.data() })); renderLoja(); });
+// Estoque dos complementos: coleção "estoqueComp" (um documento por opção, campo n). Opção sem documento = sem controle de estoque.
+let EST_COMP = {};
+const compHex = s => Array.from(new TextEncoder().encode(String(s || '').trim().toLowerCase())).map(b => b.toString(16).padStart(2, '0')).join('');
+const compKey = (g, o) => g.id + '_k' + compHex(o.nome);
+db.collection('estoqueComp').onSnapshot(s => { EST_COMP = {}; s.docs.forEach(d => { const n = +d.data().n; if (!isNaN(n)) EST_COMP[d.id] = Math.max(0, Math.floor(n)); }); renderLoja(); }, () => {});
+function usoComplementos() {   // quantas unidades de cada opção de complemento estão na sacola (considera a quantidade de cada item)
+  const uso = {}; if (typeof gruposDe !== 'function') return uso;
+  cart.forEach(c => {
+    if (!c.sel) return; const p = prods.find(x => x.id === c.id); if (!p) return;
+    gruposDe(p).forEach(g => { const s = c.sel[g.id]; if (!s) return; Object.entries(s).forEach(([i, q]) => { const o = g.opcoes[+i]; if (!o || !(+q > 0)) return; const k = compKey(g, o); uso[k] = { q: (uso[k] ? uso[k].q : 0) + (+q) * c.q, nome: o.nome }; }); });
+  });
+  return uso;
+}
+const precoVit = p => typeof window.precoVitrine === 'function' ? window.precoVitrine(p).valor : precoAtual(p);   // preço mostrado na vitrine (para ordenar e filtrar)
 // Nome, frase de efeito e logo do banner: valem os do painel (config/loja); sem eles, os que vieram do gerador
 let NOME = 'Emporio Medonça'; const NOME_GER = NOME, _bt = document.querySelector('.brand .logo-t'), _hp = document.querySelector('.hero p'), _he = document.querySelector('.hero');
 const MARCA_GER = _bt ? _bt.textContent : '', SLOGAN_GER = _hp ? _hp.textContent : '', SF_GER = !!(_he && _he.classList.contains('sf'));
@@ -109,12 +123,12 @@ function renderLoja() {
   $('cats').innerHTML = CATS.map((c, i) => bCat(c, i, false)).join('');
   $('menuCats').innerHTML = CATS.map((c, i) => bCat(c, i, true)).join('');
   const cb = $('catbar'); if (cb) cb.innerHTML = CATS.map((c, i) => `<button class="${c === cat ? 'on' : ''}" onclick="setCat(${i})">${esc(c)}</button>`).join('');
-  const pcs = prods.map(precoAtual).filter(v => v > 0);   // mostra o menor e o maior preço do cardápio como dica nos campos
+  const pcs = prods.map(precoVit).filter(v => v > 0);   // mostra o menor e o maior preço do cardápio como dica nos campos
   if (pcs.length) { $('pMin').placeholder = String(Math.floor(Math.min(...pcs))); $('pMax').placeholder = String(Math.ceil(Math.max(...pcs))); }
   const bs = norm(fBusca);
-  const L = prods.filter(p => (cat === 'Todos' || p.categoria === cat) && (!bs || norm(p.nome).includes(bs)) && (!fPromo || emPromo(p)) && (fPMin === null || precoAtual(p) >= fPMin) && (fPMax === null || precoAtual(p) <= fPMax));
-  if (fOrd === 'menor') L.sort((x, y) => precoAtual(x) - precoAtual(y));
-  else if (fOrd === 'maior') L.sort((x, y) => precoAtual(y) - precoAtual(x));
+  const L = prods.filter(p => (cat === 'Todos' || p.categoria === cat) && (!bs || norm(p.nome).includes(bs)) && (!fPromo || emPromo(p)) && (fPMin === null || precoVit(p) >= fPMin) && (fPMax === null || precoVit(p) <= fPMax));
+  if (fOrd === 'menor') L.sort((x, y) => precoVit(x) - precoVit(y));
+  else if (fOrd === 'maior') L.sort((x, y) => precoVit(y) - precoVit(x));
   else if (fOrd === 'az') L.sort((x, y) => String(x.nome).localeCompare(String(y.nome), 'pt-BR'));
   $('grid').innerHTML = L.map(p => {
     const off = esgotado(p), ads = p.adicionais || [], rm = p.remover || [];
@@ -468,6 +482,7 @@ async function finalizar() {
   if (!cart.length) return aviso('Sua sacola está vazia');
   const ab = estadoAberto(); if (!ab.ok) return aviso(ab.msg);
   for (const c of cart) { const p = prods.find(x => x.id === c.id); if (!p || esgotado(p)) return aviso('"' + c.nome + '" não está mais disponível. Retire do pedido para continuar.'); if (temEstoque(p)) { const qt = cart.filter(x => x.id === c.id).reduce((s, x) => s + x.q, 0); if (qt > Math.floor(+p.estoque)) return aviso('Só temos ' + Math.floor(+p.estoque) + ' unidade(s) de "' + c.nome + '" em estoque. Diminua a quantidade.'); } const ex = (c.ads || []).reduce((s, n) => s + (+((p.adicionais || []).find(x => x.nome === n) || {}).preco || 0), 0); let eg = 0; if (c.sel) { const r = calcGrupos(p, c.sel); if (r.erro) return aviso(r.erro); eg = r.extra; } c.extra = r2(ex + eg); c.preco = r2(precoAtual(p) + c.extra); }
+  { const uso = usoComplementos(); for (const k in uso) if (Object.prototype.hasOwnProperty.call(EST_COMP, k) && uso[k].q > EST_COMP[k]) return aviso(EST_COMP[k] > 0 ? 'Só temos ' + EST_COMP[k] + ' de "' + uso[k].nome + '". Ajuste o pedido.' : '"' + uso[k].nome + '" esgotou. Retire do pedido para continuar.'); }
   if (PEDIDO_MIN > 0 && subtotal() < PEDIDO_MIN) return aviso('Pedido mínimo: ' + R$(PEDIDO_MIN) + ' em itens');
   if (!clienteLogado()) { abrir('pConta'); return aviso('Entre com seu telefone para finalizar o pedido'); }
   const ent = lerEntrega(); if (!ent) return;
@@ -491,6 +506,14 @@ async function finalizar() {
         const p = P[l.id]; if (!p || p.ativo === false || p.indisponivel === true) throw new Error('"' + l.nome + '" não está mais disponível.');
         if (Math.abs(precoAtual(p) + (l.extra || 0) - l.preco) > 0.004) throw new Error('O preço de "' + l.nome + '" mudou. Confira a sacola e tente de novo.');
       });
+      // estoque dos complementos: confere cada opção usada e prepara a baixa (opção sem documento em estoqueComp = sem controle)
+      const usoC = usoComplementos(), kc = Object.keys(usoC), baixasC = [];
+      const cdocs = await Promise.all(kc.map(k => t.get(db.collection('estoqueComp').doc(k))));
+      kc.forEach((k, i) => {
+        const dc = cdocs[i]; if (!dc.exists) return; const n = Math.floor(+dc.data().n); if (isNaN(n)) return;
+        if (usoC[k].q > n) throw new Error(n > 0 ? 'Só temos ' + n + ' de "' + usoC[k].nome + '". Ajuste o pedido.' : '"' + usoC[k].nome + '" esgotou.');
+        baixasC.push([k, n - usoC[k].q]);
+      });
       // estoque: confere a quantidade pedida de cada item e prepara a baixa (feita na mesma transação do pedido)
       const qt = {}, baixas = []; ped.itens.forEach(l => qt[l.id] = (qt[l.id] || 0) + l.q);
       Object.keys(qt).forEach(id => {
@@ -501,6 +524,7 @@ async function finalizar() {
       const c = d.exists ? d.data() : {};
       ped.numero = c.p === per ? (c.n || 0) + 1 : 1;
       baixas.forEach(([id, n]) => t.update(db.collection('produtos').doc(id), { estoque: n }));
+      baixasC.forEach(([k, n]) => t.update(db.collection('estoqueComp').doc(k), { n }));
       t.set(cont, { n: ped.numero, p: per }); t.set(ref, ped);
     });
   } catch (e) {
