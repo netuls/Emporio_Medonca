@@ -93,6 +93,41 @@
     return { extra: r2(extra), det: partes.join(' · ') };
   }
   window.calcGrupos = calcGrupos; window.gruposDe = gruposDe;
+
+  // ── Estoque dos complementos: quanto ainda dá para escolher de cada opção (já descontando o que está na sacola) ──
+  const compUsado = (g, o) => cart.reduce((a, c) => {
+    const s = c.sel && c.sel[g.id]; if (!s) return a; let n = 0;
+    g.opcoes.forEach((x, i) => { if (x.nome === o.nome && s[i]) n += +s[i]; });
+    return a + n * c.q;
+  }, 0);
+  const compRest = (g, o) => { const k = compKey(g, o); return Object.prototype.hasOwnProperty.call(EST_COMP, k) ? Math.max(0, EST_COMP[k] - compUsado(g, o)) : Infinity; };
+  window.compRest = compRest;
+
+  // ── Preço de vitrine: item com preço 0,00 nunca aparece como R$ 0,00; mostra "a partir de" o menor valor que o cliente paga em complementos ──
+  window.precoVitrine = p => {
+    const base = precoAtual(p); if (base > 0) return { valor: base, aPartir: false };
+    let obrig = 0, menorPago = Infinity;
+    gruposDe(p).forEach(g => {
+      const ops = g.opcoes.filter(o => compRest(g, o) > 0);   // opção esgotada não entra na conta
+      ops.forEach(o => { if (+o.preco > 0) menorPago = Math.min(menorPago, +o.preco); });
+      if (g.min > 0) {   // grupo obrigatório: custo da escolha mais barata possível, pela regra de cobrança do grupo
+        const un = []; ops.forEach(o => { const n = Math.min(gOmax(g, o), compRest(g, o)); for (let k = 0; k < n; k++) un.push(+o.preco || 0); });
+        un.sort((a, b) => a - b); const t = un.slice(0, g.min); if (t.length < g.min) return;
+        obrig += g.regra === 'media' ? t.reduce((a, b) => a + b, 0) / t.length : g.regra === 'maior' ? t[t.length - 1] : g.regra === 'menor' ? t[0] : t.reduce((a, b) => a + b, 0);
+      }
+    });
+    obrig = r2(obrig);
+    if (obrig > 0) return { valor: obrig, aPartir: true };
+    if (isFinite(menorPago)) return { valor: menorPago, aPartir: true };
+    return { valor: 0, aPartir: false };
+  };
+  const APARTIR = '<small style="font-weight:400;color:var(--mut);margin-right:4px">a partir de</small>';
+  const precoHtml = p => {
+    const v = window.precoVitrine(p);
+    if (v.aPartir) return APARTIR + R$(v.valor);
+    if (v.valor > 0) return emPromo(p) ? '<s style="color:var(--mut);font-size:.8em;font-weight:400;margin-right:6px">' + R$(p.preco) + '</s>' + R$(precoAtual(p)) : R$(p.preco);
+    return 'Grátis';   // sem preço e sem nenhum complemento pago: não há valor a mostrar
+  };
   window.diagGrupos = () => console.log('Complementos por item:\n' + prods.map(p => p.nome + ' → ' + (gruposDe(p).map(g => g.nome + ' (' + g.opcoes.length + ')').join(', ') || 'nenhum')).join('\n'));
 
   // ── Janela do produto (estilo app de delivery): o item só entra na sacola por ela ──
@@ -143,6 +178,7 @@
     document.querySelectorAll('#grid .card').forEach(c => {
       const b = c.querySelector('[id^="ab"]'), id = b ? b.id.slice(2) : '';
       c.querySelectorAll('.pers,.buy').forEach(x => x.remove());
+      const pr = prods.find(x => x.id === id), prEl = c.querySelector('.pr'); if (pr && prEl) prEl.innerHTML = precoHtml(pr);   // nunca mostra R$ 0,00
       if (!id || c.classList.contains('off')) return;
       c.dataset.id = id; c.classList.add('xclk');
       const im = c.querySelector('.im'); if (im && !im.querySelector('.xplus')) im.insertAdjacentHTML('beforeend', '<span class="xplus">+</span>');
@@ -163,9 +199,10 @@
     const gHtml = () => gr.map(g => {
       const t = tot(g.id), cheio = t >= g.max, rg = gRegraTxt(g);
       const rows = g.opcoes.map((o, i) => {
-        const qn = (S[g.id] || {})[i] || 0, om = gOmax(g, o), pr = +o.preco > 0 ? '<em>+ ' + R$(o.preco) + '</em>' : '', at = 'data-g="' + esc(g.id) + '" data-i="' + i + '"';
-        if (om === 1) return '<div class="xm-opt xg' + (!qn && cheio && g.max > 1 ? ' dis' : '') + '" ' + at + '><span>' + esc(o.nome) + pr + '</span><i class="gck' + (g.max === 1 ? ' rd' : '') + (qn ? ' on' : '') + '"></i></div>';
-        return '<div class="xm-opt" style="cursor:default"><span>' + esc(o.nome) + pr + '</span><div class="gq"><button type="button" class="xg-b" ' + at + ' data-d="-1" aria-label="Menos"' + (qn ? '' : ' disabled') + '>−</button><b>' + qn + '</b><button type="button" class="xg-b" ' + at + ' data-d="1" aria-label="Mais"' + ((qn >= om || (cheio && g.max > 1)) ? ' disabled' : '') + '>+</button></div></div>';
+        const qn = (S[g.id] || {})[i] || 0, rest = compRest(g, o), omx = Math.min(gOmax(g, o), Math.floor(rest / q)), om = gOmax(g, o), pr = +o.preco > 0 ? '<em>+ ' + R$(o.preco) + '</em>' : '', at = 'data-g="' + esc(g.id) + '" data-i="' + i + '"';
+        const out = omx < 1 && !qn, est = out ? '<small style="color:#e5484d;font-weight:600">Esgotado</small>' : (isFinite(rest) && rest <= 5 ? '<small style="color:var(--mut)">Restam ' + rest + '</small>' : '');   // estoque do complemento
+        if (om === 1) return '<div class="xm-opt' + (out ? ' dis' : ' xg') + (!qn && cheio && g.max > 1 ? ' dis' : '') + '" ' + at + '><span>' + esc(o.nome) + pr + est + '</span><i class="gck' + (g.max === 1 ? ' rd' : '') + (qn ? ' on' : '') + '"></i></div>';
+        return '<div class="xm-opt' + (out ? ' dis' : '') + '" style="cursor:default"><span>' + esc(o.nome) + pr + est + '</span><div class="gq"><button type="button" class="xg-b" ' + at + ' data-d="-1" aria-label="Menos"' + (qn ? '' : ' disabled') + '>−</button><b>' + qn + '</b><button type="button" class="xg-b" ' + at + ' data-d="1" aria-label="Mais"' + ((qn >= omx || (cheio && g.max > 1)) ? ' disabled' : '') + '>+</button></div></div>';
       }).join('');
       return '<div class="xm-sec" data-gs="' + esc(g.id) + '"><h4>' + esc(g.nome) + (g.min > 0 ? '<b class="gb">Obrigatório</b>' : '') + '</h4><small>' + gLimite(g) + (g.max > 1 ? ' · ' + t + '/' + g.max : '') + (rg ? ' · ' + esc(rg) : '') + '</small>' + rows + '</div>';
     }).join('');
@@ -173,7 +210,7 @@
     m.innerHTML = '<div class="xm-box' + (p.img ? '' : ' xm-noimg') + '"><div class="xm-img">' + (p.img ? '<img src="' + esc(p.img) + '" alt="' + esc(p.nome) + '">' : '') + '</div>'
       + '<div class="xm-side"><div class="xm-top"><span>Detalhes do produto</span><button class="xm-x" type="button" aria-label="Fechar">✕</button></div><div class="xm-body">'
       + '<div class="xm-card"><h3>' + esc(p.nome) + '</h3>' + (p.desc ? '<p>' + esc(p.desc) + '</p>' : '')
-      + '<div class="xm-pr">' + (emPromo(p) ? '<s>' + R$(p.preco) + '</s>' : '') + R$(precoAtual(p)) + '</div>' + (temEstoque(p) && lim <= 10 ? '<p style="margin:8px 0 0">Restam ' + lim + ' em estoque</p>' : '') + '</div>'
+      + '<div class="xm-pr">' + (precoAtual(p) > 0 ? (emPromo(p) ? '<s>' + R$(p.preco) + '</s>' : '') + R$(precoAtual(p)) : precoHtml(p)) + '</div>' + (temEstoque(p) && lim <= 10 ? '<p style="margin:8px 0 0">Restam ' + lim + ' em estoque</p>' : '') + '</div>'
       + '<div id="xmG">' + gHtml() + '</div>'
       + (ads.length ? '<div class="xm-sec"><h4>' + esc(p.adTitulo || 'Adicionais') + '</h4><small>Escolha quantos quiser</small>' + ads.map((x, i) => '<label class="xm-opt"><span>' + esc(x.nome) + (+x.preco > 0 ? '<em>+ ' + R$(x.preco) + '</em>' : '') + '</span><input type="checkbox" data-k="a" data-i="' + i + '"></label>').join('') + '</div>' : '')
       + (rm.length ? '<div class="xm-sec"><h4>Retirar ingredientes</h4><small>Marque o que você não quer</small>' + rm.map((x, i) => '<label class="xm-opt"><span>Sem ' + esc(x) + '</span><input type="checkbox" data-k="r" data-i="' + i + '"></label>').join('') + '</div>' : '')
@@ -183,11 +220,12 @@
     document.body.appendChild(m); document.body.style.overflow = 'hidden';
     const sel = k => [...m.querySelectorAll('input[data-k="' + k + '"]:checked')].map(x => +x.dataset.i);
     const extra = () => r2(sel('a').reduce((s, i) => s + (+ads[i].preco || 0), 0) + (calcGrupos(p, S, true).extra || 0));
-    const atualiza = () => { m.querySelector('.xm-tot').textContent = R$((precoAtual(p) + extra()) * q); m.querySelector('.xm-qn').textContent = q; };
+    const atualiza = () => { const tt = (precoAtual(p) + extra()) * q; m.querySelector('.xm-tot').textContent = tt > 0 ? R$(tt) : ''; m.querySelector('.xm-qn').textContent = q; };   // sem R$ 0,00: o valor aparece quando o cliente escolhe os complementos
     const pintaG = () => { const b = $('xmG'); if (b) b.innerHTML = gHtml(); atualiza(); };
     const gMuda = (gid, i, d) => {
       const g = gr.find(x => x.id === gid); if (!g) return;
       const o = g.opcoes[i], om = gOmax(g, o); S[gid] = S[gid] || {}; const s = S[gid]; let n = (s[i] || 0) + d;
+      if (d > 0) { const r = compRest(g, o); if (((s[i] || 0) + 1) * q > r) return aviso(r < 1 ? '"' + o.nome + '" esgotou' : 'Só restam ' + r + ' de "' + o.nome + '"' + (q > 1 ? ' (para ' + q + ' itens, reduza a quantidade)' : '')); }   // estoque do complemento
       if (g.max === 1 && d > 0) { Object.keys(s).forEach(k => delete s[k]); n = 1; }   // escolha única: troca a opção anterior
       else {
         if (n < 0) n = 0;
@@ -204,6 +242,7 @@
         if (el) { m.querySelectorAll('.xm-sec.bad').forEach(x => x.classList.remove('bad')); el.classList.add('bad'); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
         return aviso(chk.erro);
       }
+      for (const g of gr) for (const [i, n] of Object.entries(S[g.id] || {})) { const r = compRest(g, g.opcoes[+i]); if (n * q > r) return aviso('Só restam ' + r + ' de "' + g.opcoes[+i].nome + '". Ajuste o item.'); }   // estoque dos complementos
       const a = sel('a').map(i => ads[i]), r = sel('r').map(i => rm[i]), obs = $('xmObs').value.trim().slice(0, 120), ex = extra(), gd = calcGrupos(p, S, true);
       const det = [gd.det, ...a.map(o => '+ ' + o.nome), ...r.map(n => 'sem ' + n), obs ? 'Obs.: ' + obs : ''].filter(Boolean).join(' · ');
       const it = cart.find(c => c.id === p.id && (c.det || '') === det);
@@ -217,8 +256,12 @@
       const og = t.closest('.xg'), ob = t.closest('.xg-b');
       if (og) return gMuda(og.dataset.g, +og.dataset.i, og.querySelector('.gck.on') ? -1 : 1);
       if (ob) return gMuda(ob.dataset.g, +ob.dataset.i, +ob.dataset.d);
-      if (t.closest('.xm-mn')) { q = Math.max(1, q - 1); atualiza(); }
-      else if (t.closest('.xm-pl')) { if (q >= lim) aviso('Só restam ' + lim + ' unidade(s) deste item'); q = Math.min(20, lim, q + 1); atualiza(); }
+      if (t.closest('.xm-mn')) { q = Math.max(1, q - 1); pintaG(); }
+      else if (t.closest('.xm-pl')) {
+        let mc = Infinity; gr.forEach(g => Object.entries(S[g.id] || {}).forEach(([i, n]) => { if (n > 0) mc = Math.min(mc, Math.floor(compRest(g, g.opcoes[+i]) / n)); }));   // estoque dos complementos já escolhidos
+        if (q >= lim) aviso('Só restam ' + lim + ' unidade(s) deste item'); else if (q >= mc) aviso('Estoque de complemento insuficiente para mais unidades');
+        q = Math.max(1, Math.min(20, lim, mc, q + 1)); pintaG();
+      }
       else if (t.closest('.xm-add')) adicionar();
     });
     atualiza();
