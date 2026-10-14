@@ -14,13 +14,28 @@
     + '@media(max-width:760px){#cam{max-width:32vw}}';
   document.head.appendChild(css);
 
+  // Abre a webcam. Se ela estiver ocupada/instável (NotReadableError), tenta de novo algumas vezes e com configuração mais simples.
+  async function abrirCamera(meu) {
+    const jeitos = [{ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false }, { video: true, audio: false }];
+    let ultimo;
+    for (let i = 0; i < 5; i++) {
+      for (const j of jeitos) {
+        if (meu !== tok) return null;   // a configuração mudou enquanto tentava
+        try { return await navigator.mediaDevices.getUserMedia(j); }
+        catch (e) { ultimo = e; if (!['NotReadableError', 'AbortError', 'OverconstrainedError'].includes(e.name)) throw e; }
+      }
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    throw ultimo;
+  }
   function parar() { tok++; if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } if (box) { box.remove(); box = null; } }
   async function ligar(c) {
     parar(); if (!c || !c.ativo) return;
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return console.info('Câmera: o navegador não permite (precisa de https).');
     const meu = tok;
     try {
-      const st = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
+      const st = await abrirCamera(meu);
+      if (!st) return;
       if (meu !== tok) { st.getTracks().forEach(t => t.stop()); return; }   // a configuração mudou enquanto pedia a permissão
       stream = st; box = document.createElement('div'); box.id = 'cam';
       box.className = POS.includes(c.pos) ? c.pos : 'be'; box.style.width = (TAM[c.tam] || TAM.m) + 'px';
@@ -29,7 +44,7 @@
       if (tx) { const sp = document.createElement('span'); sp.textContent = tx; box.appendChild(sp); }
       document.body.appendChild(box); v.play().catch(() => {});
       const tr = st.getVideoTracks()[0]; if (tr) tr.onended = parar;   // câmera desconectada
-    } catch (e) { console.info('Câmera não iniciada:', e.name); }   // permissão negada ou sem câmera: o site segue normal
+    } catch (e) { console.info('Câmera não iniciada:', e.name, e.message); }   // permissão negada ou sem câmera: o site segue normal
   }
   db.collection('config').doc('loja').onSnapshot(s => {
     const c = (s.data() || {}).camera || null, sig = JSON.stringify(c);
