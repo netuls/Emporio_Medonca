@@ -92,7 +92,7 @@
     const v = window.precoVitrine(p);
     if (v.aPartir) return APARTIR + R$(v.valor);
     if (v.valor > 0) return emPromo(p) ? '<s style="color:var(--mut);font-size:.8em;font-weight:400;margin-right:6px">' + R$(p.preco) + '</s>' + R$(precoAtual(p)) : R$(p.preco);
-    return 'Grátis';   // sem preço e sem nenhum complemento pago: não há valor a mostrar
+    return '';   // nunca mostra "Grátis" nem R$ 0,00 no produto
   };
   window.diagGrupos = () => console.log('Complementos por item:\n' + prods.map(p => p.nome + ' → ' + (gruposDe(p).map(g => g.nome + ' (' + g.opcoes.length + ')').join(', ') || 'nenhum')).join('\n'));
 
