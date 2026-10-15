@@ -8,7 +8,7 @@ async function finalizarPedido(id) {
 }
 
 (function () {
-  var HIS = {};
+  var HIS = {}, PAGS = [], FORMAS = [];   // PAGS = formas de pagamento marcadas no filtro (vazio = todas)
   var num = function (id, p) { return p.numero ? String(p.numero).padStart(2, '0') : id.slice(0, 6).toUpperCase(); };
   var ts = function (p) { return p.criadoEm && p.criadoEm.toDate ? p.criadoEm.toDate() : null; };
   var fd = function (d) { return d ? d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—'; };
@@ -23,12 +23,27 @@ async function finalizarPedido(id) {
       + '<div class="rk" id="hk"></div>'
       + '<div class="rctl" style="margin:16px 0"><input id="hq" placeholder="Buscar nº, cliente ou telefone" oninput="hisRender()" style="margin:0">'
       + '<select id="hf" onchange="hisRender()"><option value="all">Todos</option><option value="Entregue">Entregues</option><option value="Cancelado">Cancelados</option></select>'
-      + '<select id="hp" onchange="hisRender()"><option value="all">Todas as formas de pagamento</option></select>'
+      + '<details id="hpw" class="hpw"><summary id="hps">Todas as formas de pagamento</summary><div id="hpl" class="hpl"></div></details>'
       + '<button class="btn o" onclick="hisCarregar()">Atualizar</button><button class="btn o" onclick="hisCsv()">Exportar CSV</button></div>'
       + '<div class="rctl" style="margin:0 0 16px"><span style="color:var(--mut);font-size:13px">Limpar pedidos com mais de</span>'
       + '<select id="hd" style="min-width:120px"><option value="30">30 dias</option><option value="60">60 dias</option><option value="90" selected>90 dias</option><option value="180">180 dias</option><option value="365">1 ano</option></select>'
       + '<button class="btn o" style="color:#e5484d;border-color:#e5484d" onclick="hisApagarAntigos()">Apagar antigos</button></div>'
       + '<div style="overflow:auto"><table class="tb"><thead><tr><th>Pedido</th><th>WhatsApp</th><th>Itens</th><th>Data</th><th>Pagamento</th><th>Valor</th><th>Status</th><th>Ações</th></tr></thead><tbody id="hb"></tbody></table></div></div>';
+
+    // estilo do filtro de pagamento (lista com caixas de seleção)
+    var st = document.createElement('style');
+    st.textContent = '.hpw{position:relative;min-width:220px}'
+      + '.hpw summary{cursor:pointer;list-style:none;padding:10px 12px;border:1px solid var(--bd,#555);border-radius:8px;font-size:14px;user-select:none}'
+      + '.hpw summary::-webkit-details-marker{display:none}'
+      + '.hpw summary::after{content:"▾";float:right;margin-left:8px}'
+      + '.hpl{position:absolute;z-index:30;top:100%;left:0;margin-top:4px;min-width:100%;max-height:260px;overflow:auto;padding:6px;border:1px solid var(--bd,#555);border-radius:8px;background:var(--card,var(--bg,#1c1c1c));box-shadow:0 8px 24px rgba(0,0,0,.35)}'
+      + '.hpl label{display:flex;align-items:center;gap:8px;padding:8px;cursor:pointer;white-space:nowrap;border-radius:6px}'
+      + '.hpl label:hover{background:rgba(128,128,128,.18)}'
+      + '.hpl input{margin:0;width:auto}';
+    document.head.appendChild(st);
+    // fecha a lista ao clicar fora
+    document.addEventListener('click', function (e) { var w = $('hpw'); if (w && !w.contains(e.target)) w.open = false; });
+
     $('tC').insertAdjacentElement('afterend', d);
   }
 
@@ -50,21 +65,22 @@ async function finalizarPedido(id) {
   };
 
   function filtrados() {
-    var q = $('hq').value.toLowerCase().trim(), f = $('hf').value, pg = $('hp').value;
+    var q = $('hq').value.toLowerCase().trim(), f = $('hf').value;
     return Object.keys(HIS).map(function (id) { return { id: id, p: HIS[id] }; }).filter(function (x) {
       if (f !== 'all' && x.p.status !== f) return false;
-      if (pg !== 'all' && (x.p.pagamento || 'Outro') !== pg) return false;
+      if (PAGS.length && PAGS.indexOf(x.p.pagamento || 'Outro') < 0) return false;
       var c = x.p.cliente || {};
       return !q || (num(x.id, x.p) + ' ' + (c.nome || '') + ' ' + (c.tel || '')).toLowerCase().includes(q);
     }).sort(function (a, b) { return (ts(b.p) || 0) - (ts(a.p) || 0); });
   }
 
   window.hisRender = function () {
-    // opções do filtro de pagamento (montadas a partir dos pedidos carregados)
-    var sel = $('hp'), atual = sel.value;
-    var formas = Object.keys(HIS).map(function (k) { return HIS[k].pagamento || 'Outro'; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).sort();
-    sel.innerHTML = '<option value="all">Todas as formas de pagamento</option>' + formas.map(function (f) { return '<option value="' + esc(f) + '">' + esc(f) + '</option>'; }).join('');
-    sel.value = formas.indexOf(atual) >= 0 ? atual : 'all';
+    // lista de formas de pagamento com caixas de seleção (montada a partir dos pedidos carregados)
+    FORMAS = Object.keys(HIS).map(function (k) { return HIS[k].pagamento || 'Outro'; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).sort();
+    PAGS = PAGS.filter(function (f) { return FORMAS.indexOf(f) >= 0; });   // descarta formas que não existem mais
+    $('hpl').innerHTML = '<label><input type="checkbox" ' + (PAGS.length ? '' : 'checked') + ' onchange="hisPagTodas()"> <b>Todas</b></label>'
+      + FORMAS.map(function (f, i) { return '<label><input type="checkbox" ' + (PAGS.indexOf(f) >= 0 ? 'checked' : '') + ' onchange="hisPagToggle(' + i + ')"> ' + esc(f) + '</label>'; }).join('');
+    $('hps').textContent = !PAGS.length ? 'Todas as formas de pagamento' : PAGS.length === 1 ? PAGS[0] : PAGS.length + ' formas selecionadas';
 
     var l = filtrados(), all = l.map(function (x) { return x.p; });
     var ent = all.filter(function (p) { return p.status === 'Entregue'; });
@@ -83,6 +99,15 @@ async function finalizarPedido(id) {
         + '<td class="acoes"><button class="ab g" onclick="hisImprimir(\'' + id + '\')">Imprimir</button><button class="ab r" onclick="hisExcluir(\'' + id + '\')">Excluir</button></td></tr>';
     }).join('') || '<tr><td colspan="8" style="color:var(--mut)">Nenhum pedido no histórico.</td></tr>';
   };
+
+  // marca/desmarca uma forma de pagamento no filtro
+  window.hisPagToggle = function (i) {
+    var f = FORMAS[i], k = PAGS.indexOf(f);
+    if (k >= 0) PAGS.splice(k, 1); else PAGS.push(f);
+    hisRender();
+  };
+  // "Todas" limpa a seleção
+  window.hisPagTodas = function () { PAGS = []; hisRender(); };
 
   window.hisImprimir = function (id) { if (!PED[id]) PED[id] = HIS[id]; imprimirPedido(id); };
 
