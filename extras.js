@@ -1,5 +1,5 @@
 // extras.js — carregado DEPOIS do app.js (já está no index.html)
-// Adiciona: observação do pedido, troco para dinheiro, opção de talheres e a janela do produto com COMPLEMENTOS por item
+// Adiciona: a janela do produto com COMPLEMENTOS por item
 // (molhos, acompanhamentos, adicionais com preço; configurados no painel em Editar item).
 (function () {
   const num = v => parseFloat(String(v || '').replace(/[^\d,.]/g, '').replace(',', '.')) || 0;
@@ -16,46 +16,12 @@
     (0, eval)(src);
   }
 
-  // ── Campos extras na sacola (acima do botão Finalizar) ──
-  function montarExtras() {
-    const btn = $('btnFin'); if (!btn) return;
-    let b = $('extraBox');
-    if (!b) {
-      b = document.createElement('div'); b.id = 'extraBox';
-      b.innerHTML = '<label for="xObs">Observação do pedido (opcional)</label>'
-        + '<textarea id="xObs" rows="2" maxlength="200" placeholder="Ex.: tocar o interfone, entregar na portaria"></textarea>'
-        + '<div id="xTr" style="display:none"><label for="xTroco">Troco para quanto? (opcional)</label>'
-        + '<input id="xTroco" inputmode="decimal" placeholder="Ex.: 50,00 · deixe vazio se não precisa de troco"></div>'
-        + '<label class="fck" style="display:flex;align-items:center;gap:10px;margin:6px 0 16px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:14px"><input type="checkbox" id="xTalher" checked style="width:20px;height:20px;min-width:20px;margin:0;padding:0;flex:none;accent-color:var(--ac)"><span>Enviar talheres e guardanapos</span></label>';
-      btn.parentNode.insertBefore(b, btn);
-    }
-    $('xTr').style.display = forma === 'Dinheiro' ? 'block' : 'none';
-  }
-  const envolve = nome => { const o = window[nome]; window[nome] = function () { const r = o.apply(this, arguments); montarExtras(); return r; }; };
-  envolve('renderCarrinho'); envolve('pixBox');
-
-  // ── Dados que vão no pedido ──
-  window.extraPed = () => {
-    const o = {}, obs = ($('xObs') ? $('xObs').value : '').trim().slice(0, 200);
-    if (obs) o.obs = obs;
-    if (forma === 'Dinheiro' && $('xTroco')) { const t = num($('xTroco').value); if (t > 0) o.troco = Math.round(t * 100) / 100; }
-    if ($('xTalher') && !$('xTalher').checked) o.semTalher = true;
-    return o;
-  };
-  window.validaExtras = () => {
-    const e = window.extraPed();
-    if (e.troco && e.troco < total()) { aviso('O valor do troco precisa ser maior que o total (' + R$(total()) + ')'); return false; }
-    return true;
-  };
-  window.extraMsg = p => (p.obs ? '\n\n*Observação:* ' + p.obs : '') + (p.troco ? '\n*Troco para:* ' + R$(p.troco) : '') + (p.semTalher ? '\n*Sem talheres e guardanapos*' : '');
-  window.limpaExtras = () => { if ($('xObs')) $('xObs').value = ''; if ($('xTroco')) $('xTroco').value = ''; if ($('xTalher')) $('xTalher').checked = true; };
-
-  patch('finalizar', [
-    ["const ent = lerEntrega(); if (!ent) return;", "const ent = lerEntrega(); if (!ent) return; if (!validaExtras()) return;"],
-    ["status: forma === 'Pix'", "...extraPed(), status: forma === 'Pix'"],
-    ["*Total:* ${R$(ped.total)}`", "*Total:* ${R$(ped.total)}${extraMsg(ped)}`"],
-    ["cart = []; $('qtd').textContent = 0;", "cart = []; $('qtd').textContent = 0; limpaExtras();"]
-  ]);
+  // Observação do pedido, troco e talheres/guardanapos foram retirados da sacola.
+  // Estas funções ficam vazias porque o app.js, o totem.js e o admin-extras.js ainda podem chamá-las.
+  window.extraPed = () => ({});
+  window.validaExtras = () => true;
+  window.extraMsg = () => '';
+  window.limpaExtras = () => {};
 
   // ── Complementos por item: cada item guarda os próprios em "complementos" (configurados em Editar item, no painel) ──
   const normG = (g, i) => {
@@ -267,5 +233,5 @@
     atualiza();
   }
   $('grid').addEventListener('click', e => { const c = e.target.closest('.card.xclk'); if (c) abrirModal(c.dataset.id); });
-  renderLoja(); montarExtras();
+  renderLoja();
 })();
