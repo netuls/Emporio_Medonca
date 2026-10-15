@@ -223,7 +223,7 @@ function zap(id, stNovo) {
   // Só na confirmação vão os detalhes do pedido (se a mensagem salva não tiver {detalhes}, eles entram no final)
   if (st === 'Confirmado') t = t.includes('{detalhes}') ? t : t + '\n\n{detalhes}';
   else t = t.replace(/\{detalhes\}/g, '');
-  t = t.replace(/\{detalhes\}/g, detalhesPedido(p)).replace(/\{nome\}/g, (p.cliente.nome || '').split(' ')[0]).replace(/\{total\}/g, R$(p.total)).replace(/\{pedido\}/g, nPed(id)).trim() + assinatura();
+  t = t.replace(/\{detalhes\}/g, detalhesPedido(p)).replace(/\{nome\}/g, (p.cliente.nome || '').split(' ')[0]).replace(/\{total\}/g, R$(p.total)).replace(/\{pedido\}/g, nPed(id)).replace(/\{pagamento\}/g, p.pagamento || '').trim() + assinatura();
   window.open('https://wa.me/55' + tel + '?text=' + encodeURIComponent(t), '_blank');
 }
 
@@ -677,10 +677,7 @@ async function clApagar(id) {
   const c = clL.find(x => x.id === id); if (!c) return;
   if (!confirm('Apagar "' + (c.nome || 'Visitante') + '"?\n\nSerão removidos o cadastro e o histórico de visitas. Os pedidos dessa pessoa continuam salvos.')) return;
   try {
-    const b = db.batch(); b.delete(db.collection('clientes').doc(id)); b.delete(db.collection('visitas').doc(id));
-    const tel = String(c.tel || '').replace(/\D/g, '');
-    if (tel) { try { const r = await db.collection('telefones').doc(tel).get(); if (r.exists && r.data().uid === id) b.delete(r.ref); } catch (e) { /* coleção sem regra publicada: segue e apaga o resto */ } }   // libera o telefone para um novo cadastro
-    await b.commit();
+    const b = db.batch(); b.delete(db.collection('clientes').doc(id)); b.delete(db.collection('visitas').doc(id)); await b.commit();
     clL = clL.filter(x => x.id !== id); clRender(); avisoAdm('Cliente apagado');
   } catch (e) { alert('Erro ao apagar: ' + e.message); }
 }
@@ -689,9 +686,9 @@ async function clApagarTodos() {
   if (!confirm('Apagar TODOS os ' + clL.length + ' clientes e visitantes?\n\nSerão removidos cadastros e histórico de visitas. Os pedidos continuam salvos. Isso não tem volta.')) return;
   if ((prompt('Para confirmar, digite APAGAR') || '').trim().toUpperCase() !== 'APAGAR') return alert('Cancelado: nada foi apagado.');
   try {
-    const tels = Object.fromEntries(clL.map(x => [x.id, String(x.tel || '').replace(/\D/g, '')])), ids = clL.map(x => x.id);
-    for (let i = 0; i < ids.length; i += 160) {   // lotes de 160 (até 3 apagamentos por pessoa, limite de 500 por lote)
-      const b = db.batch(); ids.slice(i, i + 160).forEach(id => { b.delete(db.collection('clientes').doc(id)); b.delete(db.collection('visitas').doc(id)); if (tels[id]) b.delete(db.collection('telefones').doc(tels[id])); }); await b.commit();
+    const ids = clL.map(x => x.id);
+    for (let i = 0; i < ids.length; i += 200) {   // lotes de 200 (2 apagamentos por pessoa, limite de 500 por lote)
+      const b = db.batch(); ids.slice(i, i + 200).forEach(id => { b.delete(db.collection('clientes').doc(id)); b.delete(db.collection('visitas').doc(id)); }); await b.commit();
     }
     clL = []; clRender(); avisoAdm('Todos os clientes foram apagados');
   } catch (e) { alert('Erro ao apagar: ' + e.message); }
