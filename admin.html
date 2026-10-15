@@ -45,7 +45,7 @@
 <label>Texto abaixo da imagem (opcional)</label><input id="camX" maxlength="40" placeholder="Sorria! Ambiente com câmera">
 <button class="btn" onclick="camSalvar()">Salvar câmera</button></div>
 <div class="sec" id="pg-sec"><h2 class="pt">FORMAS DE PAGAMENTO</h2>
-<p class="rd">Escolha quais formas de pagamento o cliente vê ao finalizar o pedido. Adicione novas (ex.: Cartão de débito, Vale refeição) ou remova as que você não aceita. Precisa ficar pelo menos uma.</p>
+<p class="rd">Escolha quais formas de pagamento o cliente vê ao finalizar o pedido. Adicione novas (ex.: Cartão de débito, Vale refeição) ou remova as que você não aceita. Precisa ficar pelo menos uma. Em cada forma você pode escrever a mensagem que o cliente vê na sacola (ex.: Você paga com Caju ao retirar o pedido no restaurante). Deixe vazio para usar a mensagem padrão.</p>
 <div id="pgL" style="margin-bottom:12px"></div>
 <div class="rctl"><input id="pgN" maxlength="24" autocomplete="off" placeholder="Nova forma de pagamento" style="flex:1;min-width:180px;width:auto;margin:0" onkeydown="if(event.key==='Enter')pgAdd()"><button class="btn" onclick="pgAdd()">Adicionar</button></div></div>
 <div class="sec"><h2 class="pt">CARDÁPIO</h2>
@@ -110,12 +110,16 @@ body.adm .sec.sec-dentro>h2{font-size:15px}
 <script>
 /* Formas de pagamento: salvas em config/loja (campo "pagamentos") e lidas pelo site do cliente */
 (function(){
-  var PAD=['Pix','Cartão','Dinheiro'], PG=PAD.slice(), iniciado=false;
+  var PAD=['Pix','Cartão','Dinheiro'], PG=PAD.slice(), MSG={}, iniciado=false;
   var q=function(t){return String(t==null?'':t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});};
   function desenhar(){
+    var foco=document.activeElement&&document.activeElement.id; var val=foco&&/^pgM\d+$/.test(foco)?document.activeElement.value:null;
     document.getElementById('pgL').innerHTML=PG.map(function(n,i){
-      return '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;padding:10px 12px;border:1px solid var(--line);border-radius:10px"><span style="flex:1;font-weight:600">'+q(n)+'</span><button class="ab r" onclick="pgDel('+i+')">Remover</button></div>';
+      var ph=n==='Pix'?'Mensagem abaixo do código Pix (opcional)':'Ex.: Você paga com '+n+' ao retirar o pedido no restaurante.';
+      return '<div style="margin-bottom:8px;padding:10px 12px;border:1px solid var(--line);border-radius:10px"><div style="display:flex;gap:8px;align-items:center"><span style="flex:1;font-weight:600">'+q(n)+'</span><button class="ab r" onclick="pgDel('+i+')">Remover</button></div>'
+        +'<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap"><input id="pgM'+i+'" maxlength="200" autocomplete="off" value="'+q(MSG[n]||'')+'" placeholder="'+q(ph)+'" style="flex:1;min-width:220px;width:auto;margin:0" onkeydown="if(event.key===\'Enter\')pgMsg('+i+')"><button class="btn o" onclick="pgMsg('+i+')">Salvar mensagem</button></div></div>';
     }).join('');
+    if(val!==null&&document.getElementById(foco)) document.getElementById(foco).value=val;
   }
   async function salvar(l){
     try{ await db.collection('config').doc('loja').set({pagamentos:l},{merge:true}); avisoAdm('Formas de pagamento salvas'); return true; }
@@ -128,15 +132,23 @@ body.adm .sec.sec-dentro>h2{font-size:15px}
     if(PG.length>=10) return alert('Limite de 10 formas de pagamento.');
     if(await salvar(PG.concat(n))) document.getElementById('pgN').value='';
   };
+  window.pgMsg=async function(i){
+    var n=PG[i], t=document.getElementById('pgM'+i).value.replace(/[<>]/g,'').trim().slice(0,200), m=Object.assign({},MSG);
+    if(t) m[n]=t; else delete m[n];
+    try{ await db.collection('config').doc('loja').update({pagamentosMsg:m}); MSG=m; avisoAdm(t?'Mensagem salva':'Mensagem padrão restaurada'); }
+    catch(e){ alert('Erro ao salvar: '+e.message); }
+  };
   window.pgDel=async function(i){
     if(PG.length<=1) return alert('Mantenha pelo menos uma forma de pagamento.');
     if(!confirm('Remover "'+PG[i]+'" das formas de pagamento?')) return;
-    await salvar(PG.filter(function(_,k){return k!==i;}));
+    var m=Object.assign({},MSG); delete m[PG[i]];
+    try{ await db.collection('config').doc('loja').update({pagamentos:PG.filter(function(_,k){return k!==i;}),pagamentosMsg:m}); avisoAdm('Formas de pagamento salvas'); }
+    catch(e){ alert('Erro ao salvar: '+e.message); }
   };
   auth.onAuthStateChanged(function(u){
     if(!u||u.email!==LOJA.adminEmail||iniciado) return; iniciado=true;
     db.collection('config').doc('loja').onSnapshot(function(sn){
-      var d=sn.data()||{}; PG=(Array.isArray(d.pagamentos)&&d.pagamentos.length)?d.pagamentos.slice():PAD.slice(); desenhar();
+      var d=sn.data()||{}; PG=(Array.isArray(d.pagamentos)&&d.pagamentos.length)?d.pagamentos.slice():PAD.slice(); MSG=(d.pagamentosMsg&&typeof d.pagamentosMsg==='object')?Object.assign({},d.pagamentosMsg):{}; desenhar();
     });
   });
   desenhar();
