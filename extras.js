@@ -85,6 +85,10 @@
     obrig = r2(obrig);
     if (obrig > 0) return { valor: obrig, aPartir: true };
     if (isFinite(menorPago)) return { valor: menorPago, aPartir: true };
+    // complementos pagos todos esgotados: mostra o preço mesmo assim (sem olhar estoque)
+    let menorSem = Infinity;
+    gruposDe(p).forEach(g => g.opcoes.forEach(o => { if (+o.preco > 0) menorSem = Math.min(menorSem, +o.preco); }));
+    if (isFinite(menorSem)) return { valor: menorSem, aPartir: true };
     return { valor: 0, aPartir: false };
   };
   const APARTIR = '<small style="font-weight:400;color:var(--mut);margin-right:4px">a partir de</small>';
@@ -92,7 +96,7 @@
     const v = window.precoVitrine(p);
     if (v.aPartir) return APARTIR + R$(v.valor);
     if (v.valor > 0) return emPromo(p) ? '<s style="color:var(--mut);font-size:.8em;font-weight:400;margin-right:6px">' + R$(p.preco) + '</s>' + R$(precoAtual(p)) : R$(p.preco);
-    return '';   // nunca mostra "Grátis" nem R$ 0,00 no produto
+    return '';   // sem preço e sem nenhum complemento pago: nunca mostra "Grátis" nem R$ 0,00
   };
   window.diagGrupos = () => console.log('Complementos por item:\n' + prods.map(p => p.nome + ' → ' + (gruposDe(p).map(g => g.nome + ' (' + g.opcoes.length + ')').join(', ') || 'nenhum')).join('\n'));
 
@@ -144,7 +148,7 @@
     document.querySelectorAll('#grid .card').forEach(c => {
       const b = c.querySelector('[id^="ab"]'), id = b ? b.id.slice(2) : '';
       c.querySelectorAll('.pers,.buy').forEach(x => x.remove());
-      const pr = prods.find(x => x.id === id), prEl = c.querySelector('.pr'); if (pr && prEl) prEl.innerHTML = precoHtml(pr);   // nunca mostra R$ 0,00
+      const pr = prods.find(x => x.id === id), prEl = c.querySelector('.pr'); if (pr && prEl) prEl.innerHTML = precoHtml(pr);   // nunca mostra R$ 0,00 nem "Grátis"
       if (!id || c.classList.contains('off')) return;
       c.dataset.id = id; c.classList.add('xclk');
       const im = c.querySelector('.im'); if (im && !im.querySelector('.xplus')) im.insertAdjacentHTML('beforeend', '<span class="xplus">+</span>');
