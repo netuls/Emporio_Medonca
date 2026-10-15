@@ -8,7 +8,7 @@ async function finalizarPedido(id) {
 }
 
 (function () {
-  var HIS = {}, LISTA = [];
+  var HIS = {};
   var num = function (id, p) { return p.numero ? String(p.numero).padStart(2, '0') : id.slice(0, 6).toUpperCase(); };
   var ts = function (p) { return p.criadoEm && p.criadoEm.toDate ? p.criadoEm.toDate() : null; };
   var fd = function (d) { return d ? d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—'; };
@@ -23,6 +23,7 @@ async function finalizarPedido(id) {
       + '<div class="rk" id="hk"></div>'
       + '<div class="rctl" style="margin:16px 0"><input id="hq" placeholder="Buscar nº, cliente ou telefone" oninput="hisRender()" style="margin:0">'
       + '<select id="hf" onchange="hisRender()"><option value="all">Todos</option><option value="Entregue">Entregues</option><option value="Cancelado">Cancelados</option></select>'
+      + '<select id="hp" onchange="hisRender()"><option value="all">Todas as formas de pagamento</option></select>'
       + '<button class="btn o" onclick="hisCarregar()">Atualizar</button><button class="btn o" onclick="hisCsv()">Exportar CSV</button></div>'
       + '<div class="rctl" style="margin:0 0 16px"><span style="color:var(--mut);font-size:13px">Limpar pedidos com mais de</span>'
       + '<select id="hd" style="min-width:120px"><option value="30">30 dias</option><option value="60">60 dias</option><option value="90" selected>90 dias</option><option value="180">180 dias</option><option value="365">1 ano</option></select>'
@@ -49,21 +50,28 @@ async function finalizarPedido(id) {
   };
 
   function filtrados() {
-    var q = $('hq').value.toLowerCase().trim(), f = $('hf').value;
+    var q = $('hq').value.toLowerCase().trim(), f = $('hf').value, pg = $('hp').value;
     return Object.keys(HIS).map(function (id) { return { id: id, p: HIS[id] }; }).filter(function (x) {
       if (f !== 'all' && x.p.status !== f) return false;
+      if (pg !== 'all' && (x.p.pagamento || 'Outro') !== pg) return false;
       var c = x.p.cliente || {};
       return !q || (num(x.id, x.p) + ' ' + (c.nome || '') + ' ' + (c.tel || '')).toLowerCase().includes(q);
     }).sort(function (a, b) { return (ts(b.p) || 0) - (ts(a.p) || 0); });
   }
 
   window.hisRender = function () {
-    var all = Object.keys(HIS).map(function (k) { return HIS[k]; });
+    // opções do filtro de pagamento (montadas a partir dos pedidos carregados)
+    var sel = $('hp'), atual = sel.value;
+    var formas = Object.keys(HIS).map(function (k) { return HIS[k].pagamento || 'Outro'; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).sort();
+    sel.innerHTML = '<option value="all">Todas as formas de pagamento</option>' + formas.map(function (f) { return '<option value="' + esc(f) + '">' + esc(f) + '</option>'; }).join('');
+    sel.value = formas.indexOf(atual) >= 0 ? atual : 'all';
+
+    var l = filtrados(), all = l.map(function (x) { return x.p; });
     var ent = all.filter(function (p) { return p.status === 'Entregue'; });
     var rec = ent.reduce(function (a, p) { return a + (p.total || 0); }, 0);
     var kpi = function (t, v, s) { return '<div class="rc"><small>' + t + '</small><b>' + v + '</b><i>' + s + '</i></div>'; };
-    $('hk').innerHTML = kpi('No histórico', all.length, 'pedidos guardados') + kpi('Entregues', ent.length, 'finalizados') + kpi('Cancelados', all.length - ent.length, 'pedidos') + kpi('Receita', R$(rec), 'dos entregues');
-    var l = filtrados();
+    $('hk').innerHTML = kpi('No histórico', all.length, 'na lista atual') + kpi('Entregues', ent.length, 'finalizados') + kpi('Cancelados', all.length - ent.length, 'pedidos') + kpi('Receita', R$(rec), 'dos entregues');
+
     $('hb').innerHTML = l.map(function (x) {
       var p = x.p, c = p.cliente || {}, id = x.id;
       return '<tr><td data-l="Pedido"><b>Nº ' + esc(num(id, p)) + '</b><br><small style="color:var(--mut)">' + esc(c.nome || '') + (p.origem === 'Manual' ? ' · 🧾 manual' : '') + '</small></td>'
@@ -103,7 +111,7 @@ async function finalizarPedido(id) {
     var c = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
     var rows = [['Nº', 'Data', 'Cliente', 'Telefone', 'Itens', 'Frete', 'Pagamento', 'Status', 'Total']].concat(l.map(function (x) {
       var p = x.p, cl = p.cliente || {};
-      return [num(x.id, p), fd(ts(p.criadoEm ? p : p)), cl.nome, cl.tel, (p.itens || []).map(function (i) { return i.nome + (i.det ? ' (' + i.det + ')' : '') + ' x' + i.q; }).join(' | '), (p.frete || 0).toFixed(2).replace('.', ','), p.pagamento, p.status, (p.total || 0).toFixed(2).replace('.', ',')];
+      return [num(x.id, p), fd(ts(p)), cl.nome, cl.tel, (p.itens || []).map(function (i) { return i.nome + (i.det ? ' (' + i.det + ')' : '') + ' x' + i.q; }).join(' | '), (p.frete || 0).toFixed(2).replace('.', ','), p.pagamento, p.status, (p.total || 0).toFixed(2).replace('.', ',')];
     }));
     var a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob(['\ufeff' + rows.map(function (r) { return r.map(c).join(';'); }).join('\r\n')], { type: 'text/csv;charset=utf-8' }));
