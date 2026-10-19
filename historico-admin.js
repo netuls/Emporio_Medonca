@@ -1,4 +1,4 @@
-/* Histórico de pedidos + botão Finalizar (sem WhatsApp) */
+/* Histórico de pedidos + botão Finalizar (sem WhatsApp) + controle de pagamento (Pago / Não pago) */
 
 // Finaliza o pedido: vira "Entregue" (entra nos relatórios) e vai para o Histórico, sem perguntar do WhatsApp
 async function finalizarPedido(id) {
@@ -21,6 +21,7 @@ async function finalizarPedido(id) {
     d.innerHTML = '<div class="sec"><h2 class="pt">HISTÓRICO DE PEDIDOS</h2>'
       + '<p class="rd">Pedidos finalizados (entregues) e cancelados. <b>Atenção:</b> ao excluir um pedido ele também sai dos Relatórios e do total gasto em Clientes. Exporte o CSV antes de apagar, se quiser guardar os dados.</p>'
       + '<div class="rk" id="hk"></div>'
+      + '<div class="rctl" style="margin:16px 0 0"><button class="btn" onclick="hisTodosPagos()">✔ Todos pagaram</button><span style="color:var(--mut);font-size:13px">Marca como pagos todos os pedidos da lista abaixo (respeita busca e filtros). Cancelados não entram.</span></div>'
       + '<div class="rctl" style="margin:16px 0"><input id="hq" placeholder="Buscar nº, cliente ou telefone" oninput="hisRender()" style="margin:0">'
       + '<select id="hf" onchange="hisRender()"><option value="all">Todos</option><option value="Entregue">Entregues</option><option value="Cancelado">Cancelados</option></select>'
       + '<details id="hpw" class="hpw"><summary id="hps">Todas as formas de pagamento</summary><div id="hpl" class="hpl"></div></details>'
@@ -28,7 +29,7 @@ async function finalizarPedido(id) {
       + '<div class="rctl" style="margin:0 0 16px"><span style="color:var(--mut);font-size:13px">Limpar pedidos com mais de</span>'
       + '<select id="hd" style="min-width:120px"><option value="30">30 dias</option><option value="60">60 dias</option><option value="90" selected>90 dias</option><option value="180">180 dias</option><option value="365">1 ano</option></select>'
       + '<button class="btn o" style="color:#e5484d;border-color:#e5484d" onclick="hisApagarAntigos()">Apagar antigos</button></div>'
-      + '<div style="overflow:auto"><table class="tb"><thead><tr><th>Pedido</th><th>WhatsApp</th><th>Itens</th><th>Data</th><th>Pagamento</th><th>Valor</th><th>Status</th><th>Ações</th></tr></thead><tbody id="hb"></tbody></table></div></div>';
+      + '<div style="overflow:auto"><table class="tb"><thead><tr><th>Pedido</th><th>WhatsApp</th><th>Itens</th><th>Data</th><th>Pagamento</th><th>Valor</th><th>Status</th><th>Pago?</th><th>Ações</th></tr></thead><tbody id="hb"></tbody></table></div></div>';
 
     // estilo do filtro de pagamento (lista com caixas de seleção)
     var st = document.createElement('style');
@@ -85,8 +86,9 @@ async function finalizarPedido(id) {
     var l = filtrados(), all = l.map(function (x) { return x.p; });
     var ent = all.filter(function (p) { return p.status === 'Entregue'; });
     var rec = ent.reduce(function (a, p) { return a + (p.total || 0); }, 0);
+    var pagos = ent.filter(function (p) { return p.pago; }).reduce(function (a, p) { return a + (p.total || 0); }, 0);
     var kpi = function (t, v, s) { return '<div class="rc"><small>' + t + '</small><b>' + v + '</b><i>' + s + '</i></div>'; };
-    $('hk').innerHTML = kpi('No histórico', all.length, 'na lista atual') + kpi('Entregues', ent.length, 'finalizados') + kpi('Cancelados', all.length - ent.length, 'pedidos') + kpi('Receita', R$(rec), 'dos entregues');
+    $('hk').innerHTML = kpi('No histórico', all.length, 'na lista atual') + kpi('Entregues', ent.length, 'finalizados') + kpi('Cancelados', all.length - ent.length, 'pedidos') + kpi('Receita', R$(rec), 'dos entregues') + kpi('Recebido', R$(pagos), 'marcados como pagos') + kpi('A receber', R$(rec - pagos), 'entregues não pagos');
 
     $('hb').innerHTML = l.map(function (x) {
       var p = x.p, c = p.cliente || {}, id = x.id;
@@ -96,8 +98,9 @@ async function finalizarPedido(id) {
         + '<td data-l="Data">' + fd(ts(p)) + '</td><td data-l="Pagamento">' + esc(p.pagamento || '—') + '</td>'
         + '<td data-l="Valor">' + R$(p.total || 0) + (p.frete ? '<br><small style="color:var(--mut)">frete ' + R$(p.frete) + '</small>' : '') + '</td>'
         + '<td data-l="Status"><span class="st s' + (STIDX[p.status] ?? 0) + '">' + esc(p.status) + '</span></td>'
-        + '<td class="acoes"><button class="ab g" onclick="hisImprimir(\'' + id + '\')">Imprimir</button><button class="ab r" onclick="hisExcluir(\'' + id + '\')">Excluir</button></td></tr>';
-    }).join('') || '<tr><td colspan="8" style="color:var(--mut)">Nenhum pedido no histórico.</td></tr>';
+        + '<td data-l="Pago?">' + (p.status === 'Cancelado' ? '<small style="color:var(--mut)">—</small>' : '<span style="font-weight:700;color:' + (p.pago ? 'var(--ok)' : 'var(--erro)') + '">' + (p.pago ? '● Pago' : '● Não pago') + '</span>') + '</td>'
+        + '<td class="acoes">' + (p.status === 'Cancelado' ? '' : '<button class="ab ' + (p.pago ? 'r' : 'g') + '" onclick="hisPago(\'' + id + '\',' + !p.pago + ')">' + (p.pago ? 'Marcar não pago' : '✔ Marcar pago') + '</button>') + '<button class="ab g" onclick="hisImprimir(\'' + id + '\')">Imprimir</button><button class="ab r" onclick="hisExcluir(\'' + id + '\')">Excluir</button></td></tr>';
+    }).join('') || '<tr><td colspan="9" style="color:var(--mut)">Nenhum pedido no histórico.</td></tr>';
   };
 
   // marca/desmarca uma forma de pagamento no filtro
@@ -108,6 +111,26 @@ async function finalizarPedido(id) {
   };
   // "Todas" limpa a seleção
   window.hisPagTodas = function () { PAGS = []; hisRender(); };
+
+  // marca um pedido como pago / não pago
+  window.hisPago = async function (id, v) {
+    try { await db.collection('pedidos').doc(id).update({ pago: v }); HIS[id].pago = v; hisRender(); avisoAdm(v ? 'Marcado como pago' : 'Marcado como não pago'); }
+    catch (e) { alert('Erro ao salvar: ' + e.message); }
+  };
+
+  // marca como pagos todos os pedidos da lista atual (respeita busca, status e forma de pagamento)
+  window.hisTodosPagos = async function () {
+    var alvo = filtrados().filter(function (x) { return !x.p.pago && x.p.status !== 'Cancelado'; });
+    if (!alvo.length) return alert('Não há pedidos não pagos na lista.');
+    var soma = alvo.reduce(function (a, x) { return a + (x.p.total || 0); }, 0);
+    if (!confirm('Marcar ' + alvo.length + ' pedido(s) como PAGOS?\n\nTotal: ' + R$(soma) + '. Pedidos cancelados não entram.')) return;
+    try {
+      for (var i = 0; i < alvo.length; i += 400) {
+        var b = db.batch(); alvo.slice(i, i + 400).forEach(function (x) { b.update(db.collection('pedidos').doc(x.id), { pago: true }); }); await b.commit();
+      }
+      alvo.forEach(function (x) { HIS[x.id].pago = true; }); hisRender(); avisoAdm('Todos marcados como pagos ✔');
+    } catch (e) { alert('Erro ao salvar: ' + e.message); }
+  };
 
   window.hisImprimir = function (id) { if (!PED[id]) PED[id] = HIS[id]; imprimirPedido(id); };
 
@@ -134,9 +157,9 @@ async function finalizarPedido(id) {
   window.hisCsv = function () {
     var l = filtrados(); if (!l.length) return alert('Não há pedidos para exportar.');
     var c = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
-    var rows = [['Nº', 'Data', 'Cliente', 'Telefone', 'Itens', 'Frete', 'Pagamento', 'Status', 'Total']].concat(l.map(function (x) {
+    var rows = [['Nº', 'Data', 'Cliente', 'Telefone', 'Itens', 'Frete', 'Pagamento', 'Status', 'Pago', 'Total']].concat(l.map(function (x) {
       var p = x.p, cl = p.cliente || {};
-      return [num(x.id, p), fd(ts(p)), cl.nome, cl.tel, (p.itens || []).map(function (i) { return i.nome + (i.det ? ' (' + i.det + ')' : '') + ' x' + i.q; }).join(' | '), (p.frete || 0).toFixed(2).replace('.', ','), p.pagamento, p.status, (p.total || 0).toFixed(2).replace('.', ',')];
+      return [num(x.id, p), fd(ts(p)), cl.nome, cl.tel, (p.itens || []).map(function (i) { return i.nome + (i.det ? ' (' + i.det + ')' : '') + ' x' + i.q; }).join(' | '), (p.frete || 0).toFixed(2).replace('.', ','), p.pagamento, p.status, (p.status === 'Cancelado' ? '' : p.pago ? 'Sim' : 'Não'), (p.total || 0).toFixed(2).replace('.', ',')];
     }));
     var a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob(['\ufeff' + rows.map(function (r) { return r.map(c).join(';'); }).join('\r\n')], { type: 'text/csv;charset=utf-8' }));
