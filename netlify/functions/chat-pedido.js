@@ -151,10 +151,15 @@ exports.handler = async event => {
   };
 
   try {
-    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(MODELO) + ':generateContent', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': chave }, body: JSON.stringify(corpo)
-    });
-    if (r.status === 429) return resp(429, { erro: 'O atendente está muito ocupado agora. Tente de novo em instantes ou use o cardápio.' });
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(MODELO) + ':generateContent';
+    const chamar = () => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': chave }, body: JSON.stringify(corpo) });
+    let r = await chamar();
+    if (r.status === 429 || r.status === 503) {   // limite por minuto estourado ou modelo sobrecarregado: espera um pouco e tenta mais uma vez
+      console.warn('Gemini', r.status, 'tentando de novo.', (await r.text()).slice(0, 300));
+      await new Promise(ok => setTimeout(ok, 2000));
+      r = await chamar();
+    }
+    if (r.status === 429) { console.warn('Gemini 429 de novo:', (await r.text()).slice(0, 300)); return resp(429, { erro: 'O atendente está muito ocupado agora. Tente de novo em instantes ou use o cardápio.' }); }
     if (!r.ok) { console.error('Gemini', r.status, (await r.text()).slice(0, 300)); return resp(502, { erro: 'O atendente virtual falhou. Use o cardápio normalmente.' }); }
     const j = await r.json();
     const texto = (((j.candidates || [])[0] || {}).content || {}).parts;
