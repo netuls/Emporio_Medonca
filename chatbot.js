@@ -19,6 +19,9 @@
       const o = { id: p.id, nome: p.nome, categoria: p.categoria || '', preco: precoAtual(p) };
       if (p.desc) o.desc = String(p.desc).slice(0, 90);
       if (esgotado(p)) o.esgotado = true;
+      // Estoque que ainda pode ser pedido (já desconta o que está na sacola). Só vai quando há limite.
+      const rest = estRest(p);
+      if (isFinite(rest) && rest <= 50) o.estoque = Math.max(0, rest);
       if ((p.remover || []).length) o.remover = p.remover;
       const gr = gruposDe(p);
       if (gr.length) o.grupos = gr.map(g => ({
@@ -282,7 +285,9 @@
       const { notas, mudou } = aplicar(j);
       historico.push({ role: 'user', texto: t }); historico.push({ role: 'bot', texto: j.resposta || '' });
       historico = historico.slice(-10);
-      if (j.resposta) bolha(j.resposta, 'bot');
+      // Se o site recusou o pedido (estoque, complemento, etc.) e nada mudou na sacola, mostra só a nota:
+      // assim o cliente não lê "anotei!" da IA logo antes de "só restam X".
+      if (j.resposta && (mudou || !notas.length)) bolha(j.resposta, 'bot');
       notas.forEach(n => bolha(n, 'nota'));
       if (!estadoAberto().ok) bolha(estadoAberto().curto + '. Você pode montar a sacola, mas só finaliza com a casa aberta.', 'nota');
       painelSacola();
