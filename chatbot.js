@@ -87,8 +87,8 @@
   // ── Visual (usa as variáveis de cor do próprio site) ──
   const css = document.createElement('style');
   css.textContent = `
-#cbFab{position:fixed;right:16px;bottom:88px;z-index:50;display:flex;align-items:center;gap:8px;padding:12px 18px;border:0;border-radius:999px;background:var(--ac);color:var(--on,#fff);font:600 14px/1 inherit;cursor:pointer;box-shadow:0 8px 24px -6px rgba(0,0,0,.5)}
-#cbBox{position:fixed;right:16px;bottom:16px;z-index:55;width:min(390px,calc(100vw - 32px));height:min(580px,calc(100dvh - 32px));display:none;flex-direction:column;background:var(--card);color:var(--tx);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:0 30px 80px -20px rgba(0,0,0,.7)}
+#cbFab{position:fixed;left:16px;bottom:88px;z-index:50;display:flex;align-items:center;gap:8px;padding:12px 18px;border:0;border-radius:999px;background:var(--ac);color:var(--on,#fff);font:600 14px/1 inherit;cursor:pointer;box-shadow:0 8px 24px -6px rgba(0,0,0,.5)}
+#cbBox{position:fixed;left:16px;bottom:16px;z-index:55;width:min(390px,calc(100vw - 32px));height:min(580px,calc(100dvh - 32px));display:none;flex-direction:column;background:var(--card);color:var(--tx);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:0 30px 80px -20px rgba(0,0,0,.7)}
 #cbBox.on{display:flex}
 .cb-top{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line);font-weight:600}
 .cb-top button{width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:none;color:var(--tx);cursor:pointer}
@@ -102,7 +102,7 @@
 .cb-in{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line)}
 .cb-in input{flex:1;margin:0;min-width:0}
 .cb-in .btn{padding-left:16px;padding-right:16px}
-@media(max-width:560px){#cbFab{bottom:84px}#cbBox{right:0;bottom:0;width:100%;height:88dvh;border-radius:16px 16px 0 0}}`;
+@media(max-width:560px){#cbFab{bottom:84px}#cbBox{left:0;right:0;bottom:0;width:100%;height:88dvh;border-radius:16px 16px 0 0}}`;
   document.head.appendChild(css);
 
   const fab = document.createElement('button'); fab.id = 'cbFab'; fab.type = 'button'; fab.textContent = '💬 Pedir por chat';
