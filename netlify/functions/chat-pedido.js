@@ -1,24 +1,26 @@
-// netlify/functions/chat-pedido.js
+// api/chat-pedido.js  (Vercel)
 // Recebe a frase do cliente + o cardápio (já enxuto) e devolve um pedido estruturado em JSON.
-// A chave do Gemini fica na variável de ambiente GEMINI_API_KEY (Netlify → Site settings → Environment variables).
-// FIREBASE_PROJECT_ID = id do projeto Firebase (o mesmo "projectId" do config.js). Sem ele, a função recusa tudo.
-// Opcional: GEMINI_MODEL (padrão abaixo), ALLOWED_ORIGIN (ex.: https://seusite.netlify.app)
-//           e CHAT_EXIGE_LOGIN=1 (só aceita clientes que entraram pelo telefone, não visitantes anônimos).
+// Variáveis de ambiente (Vercel → Project → Settings → Environment Variables):
+//   GEMINI_API_KEY      = chave do Gemini
+//   FIREBASE_PROJECT_ID = id do projeto Firebase (o mesmo "projectId" do config.js). Sem ele, a função recusa tudo.
+//   ALLOWED_ORIGIN      = (opcional) endereço do site, ex.: https://seuusuario.github.io  (sem barra no final)
+//   GEMINI_MODEL        = (opcional) padrão abaixo
+//   CHAT_EXIGE_LOGIN=1  = (opcional) só aceita clientes que entraram pelo telefone, não visitantes anônimos
 //
 // IMPORTANTE: esta função NÃO grava nada no Firestore e NÃO recebe nome/telefone/endereço do cliente.
 // Quem monta a sacola e finaliza o pedido é o próprio site (app.js), que confere preço, estoque e regras de novo.
 
 const crypto = require('crypto');
-const MODELO = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const MODELO = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
 const ORIGEM = process.env.ALLOWED_ORIGIN || '*';
 
-const CORS = {
-  'Access-Control-Allow-Origin': ORIGEM,
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Content-Type': 'application/json; charset=utf-8'
-};
-const resp = (code, obj) => ({ statusCode: code, headers: CORS, body: JSON.stringify(obj) });
+function enviar(res, code, obj) {
+  res.setHeader('Access-Control-Allow-Origin', ORIGEM);
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.status(code).send(code === 204 ? '' : JSON.stringify(obj));
+}
 
 // ── Verifica o ID token do Firebase (sem firebase-admin): assinatura RS256 com os certificados públicos do Google ──
 const CERTS_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
@@ -116,28 +118,30 @@ CARDÁPIO (JSON)
 ${JSON.stringify(ctx.cardapio)}`;
 }
 
-exports.handler = async event => {
-  if (event.httpMethod === 'OPTIONS') return resp(204, {});
-  if (event.httpMethod !== 'POST') return resp(405, { erro: 'Método não permitido' });
+module.exports = async function handler(req, res) {
+  if (req.method === 'OPTIONS') return enviar(res, 204, {});
+  if (req.method !== 'POST') return enviar(res, 405, { erro: 'Método não permitido' });
 
   const chave = process.env.GEMINI_API_KEY;
-  if (!chave) return resp(500, { erro: 'Chat não configurado (falta GEMINI_API_KEY).' });
+  if (!chave) return enviar(res, 500, { erro: 'Chat não configurado (falta GEMINI_API_KEY).' });
 
   const projeto = process.env.FIREBASE_PROJECT_ID;
-  if (!projeto) return resp(500, { erro: 'Chat não configurado (falta FIREBASE_PROJECT_ID).' });
-  const auth = event.headers.authorization || event.headers.Authorization || '';
+  if (!projeto) return enviar(res, 500, { erro: 'Chat não configurado (falta FIREBASE_PROJECT_ID).' });
+  const auth = req.headers.authorization || '';
   let quem;
   try { quem = await verificarToken(auth.replace(/^Bearer\s+/i, ''), projeto); }
-  catch (e) { console.warn('Token recusado:', e.message); return resp(401, { erro: 'Sessão inválida. Atualize a página e tente de novo.' }); }
-  if (process.env.CHAT_EXIGE_LOGIN === '1' && quem.anonimo) return resp(401, { erro: 'Entre com seu telefone para usar o chat.' });
-  if (limite(quem.uid)) return resp(429, { erro: 'Muitas mensagens seguidas. Aguarde um instante.' });
+  catch (e) { console.warn('Token recusado:', e.message); return enviar(res, 401, { erro: 'Sessão inválida. Atualize a página e tente de novo.' }); }
+  if (process.env.CHAT_EXIGE_LOGIN === '1' && quem.anonimo) return enviar(res, 401, { erro: 'Entre com seu telefone para usar o chat.' });
+  if (limite(quem.uid)) return enviar(res, 429, { erro: 'Muitas mensagens seguidas. Aguarde um instante.' });
 
-  if ((event.body || '').length > 80_000) return resp(413, { erro: 'Pedido grande demais.' });
-  let b; try { b = JSON.parse(event.body || '{}'); } catch (e) { return resp(400, { erro: 'JSON inválido.' }); }
+  let b = req.body;   // a Vercel já entrega o JSON convertido em objeto
+  if (typeof b === 'string') { try { b = JSON.parse(b); } catch (e) { return enviar(res, 400, { erro: 'JSON inválido.' }); } }
+  if (!b || typeof b !== 'object') return enviar(res, 400, { erro: 'JSON inválido.' });
+  if (JSON.stringify(b).length > 80_000) return enviar(res, 413, { erro: 'Pedido grande demais.' });
 
   const mensagem = String(b.mensagem || '').trim().slice(0, 400);
-  if (!mensagem) return resp(400, { erro: 'Mensagem vazia.' });
-  if (!Array.isArray(b.cardapio) || !b.cardapio.length) return resp(400, { erro: 'Cardápio vazio.' });
+  if (!mensagem) return enviar(res, 400, { erro: 'Mensagem vazia.' });
+  if (!Array.isArray(b.cardapio) || !b.cardapio.length) return enviar(res, 400, { erro: 'Cardápio vazio.' });
 
   const historico = (Array.isArray(b.historico) ? b.historico : []).slice(-8)
     .map(h => ({ role: h.role === 'bot' ? 'model' : 'user', parts: [{ text: String(h.texto || '').slice(0, 500) }] }))
@@ -149,7 +153,7 @@ exports.handler = async event => {
       entregas: (Array.isArray(b.entregas) ? b.entregas : []).slice(0, 5).map(x => String(x).slice(0, 20))
     }) }] },
     contents: [...historico, { role: 'user', parts: [{ text: mensagem }] }],
-    generationConfig: { temperature: 0.2, maxOutputTokens: 1024, responseMimeType: 'application/json', responseSchema: SCHEMA }
+    generationConfig: { temperature: 0.2, maxOutputTokens: 4096, responseMimeType: 'application/json', responseSchema: SCHEMA }
   };
 
   try {
@@ -161,19 +165,19 @@ exports.handler = async event => {
       await new Promise(ok => setTimeout(ok, 2000));
       r = await chamar();
     }
-    if (r.status === 429) { console.warn('Gemini 429 de novo:', (await r.text()).slice(0, 300)); return resp(429, { erro: 'O atendente está muito ocupado agora. Tente de novo em instantes ou use o cardápio.' }); }
-    if (!r.ok) { console.error('Gemini', r.status, (await r.text()).slice(0, 300)); return resp(502, { erro: 'O atendente virtual falhou. Use o cardápio normalmente.' }); }
+    if (r.status === 429) { console.warn('Gemini 429 de novo:', (await r.text()).slice(0, 300)); return enviar(res, 429, { erro: 'O atendente está muito ocupado agora. Tente de novo em instantes ou use o cardápio.' }); }
+    if (!r.ok) { console.error('Gemini', r.status, (await r.text()).slice(0, 300)); return enviar(res, 502, { erro: 'O atendente virtual falhou. Use o cardápio normalmente.' }); }
     const j = await r.json();
     const texto = (((j.candidates || [])[0] || {}).content || {}).parts;
     const bruto = texto && texto[0] && texto[0].text;
-    let out; try { out = JSON.parse(bruto); } catch (e) { return resp(502, { erro: 'Resposta inesperada do atendente.' }); }
-    return resp(200, {
+    let out; try { out = JSON.parse(bruto); } catch (e) { return enviar(res, 502, { erro: 'Resposta inesperada do atendente.' }); }
+    return enviar(res, 200, {
       resposta: String(out.resposta || '').slice(0, 600),
       itens: Array.isArray(out.itens) ? out.itens.slice(0, 15) : [],
       remover_ids: Array.isArray(out.remover_ids) ? out.remover_ids.slice(0, 15) : [],
       entrega: String(out.entrega || ''), pagamento: String(out.pagamento || '')
     });
   } catch (e) {
-    console.error(e); return resp(500, { erro: 'Não consegui falar com o atendente. Tente de novo.' });
+    console.error(e); return enviar(res, 500, { erro: 'Não consegui falar com o atendente. Tente de novo.' });
   }
 };
