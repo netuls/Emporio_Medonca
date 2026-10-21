@@ -137,9 +137,25 @@
   function linha(a, b, cls) { const l = el('div', 'l' + (cls ? ' ' + cls : '')); l.appendChild(el('span', '', a)); l.appendChild(el('span', '', b)); return l; }
   function botao(rot, fn, cls) { const b = el('button', cls, rot); b.type = 'button'; b.onclick = fn; return b; }
   function escolherEntrega(e) { setEntrega(e); cardResumo(); }
-  function escolherPag(f) {
+  function selecionarPag(f) {
     const d = [...document.querySelectorAll('#fp div')].find(x => x.dataset.f === f);
     if (d) { d.click(); pagSel = f; }
+  }
+  function escolherPag(f) { selecionarPag(f); cardResumo(); }
+  // Pergunta com botões de resposta rápida (a resposta aparece como mensagem do cliente)
+  function perguntaEscolha(titulo, opcoes, fn) {
+    const d = el('div', 'cb-res'); d.appendChild(el('div', 'perg', titulo));
+    const r = el('div', 'row');
+    opcoes.forEach(o => r.appendChild(botao(o, () => { d.remove(); bolha(o, 'eu'); fn(o); }, 'cb-chip')));
+    d.appendChild(r); msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight;
+  }
+  // Ordem: 1) WhatsApp (identificar o cliente)  2) como receber (se houver mais de uma)  3) pagamento  4) resumo
+  function proximoPasso() {
+    if (!cart.length) return;
+    if (!clienteLogado()) { if (etapa === 'nome') bolha('Falta só o seu nome e sobrenome.', 'bot'); else perguntarTel(); return; }
+    autoEscolher();
+    if (!entrega) { perguntaEscolha('Como você prefere receber?', entregasDisp(), e => { setEntrega(e); proximoPasso(); }); return; }
+    if (!pagAtual()) { perguntaEscolha('Como você vai pagar?', pagsDisp(), f => { selecionarPag(f); proximoPasso(); }); return; }
     cardResumo();
   }
   const pagsDisp = () => formasPagamento().filter(f => entrega !== 'Uber Flash' || f === 'Pix');
@@ -209,10 +225,7 @@
   fab.onclick = abrirChat;
   box.querySelector('.cb-top button').onclick = fecharChat;
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && box.classList.contains('on')) fecharChat(); });
-  $('cbVer').onclick = () => {
-    if (!clienteLogado()) { if (etapa === 'nome') bolha('Falta só o seu nome e sobrenome.', 'bot'); else perguntarTel(); return; }
-    cardResumo();
-  };
+  $('cbVer').onclick = proximoPasso;
 
   // ── Login pelo WhatsApp dentro do chat (usa o continuarTel/salvarDados do app.js; o número e o nome NUNCA vão para a IA) ──
   let etapa = null, pediuTel = false, pendente = null;   // pendente: parte do pedido que veio na mesma frase do número   // etapa: null · 'tel' (esperando o número) · 'nome' (número novo: esperando nome e sobrenome)
@@ -225,11 +238,11 @@
   const semTel = t => String(t).replace(/(?:\+?55[\s-]?)?\(?\d{2}\)?[\s-]?9?\d{4}[\s-]?\d{4}/, ' ')
     .replace(/\b(?:meu|minha)?\s*(?:whats?\s?app|whastapp|whatsap|zap(?:zap)?|wpp|telefone|celular|n[uú]mero|contato)\s*(?:é|eh|:|-)?\s*/gi, ' ')
     .replace(/,\s*(?=,)/g, '').replace(/\s+,/g, ',').replace(/\s{2,}/g, ' ').replace(/^[\s,.;-]+|[\s,.;-]+$/g, '');
-  function perguntarTel() { setEtapa('tel'); bolha('Para finalizar, qual é o seu WhatsApp com DDD? Ex.: (85) 99999-8888', 'bot'); }
+  function perguntarTel() { setEtapa('tel'); bolha('Antes de seguir, qual é o seu WhatsApp com DDD? Ex.: (85) 99999-8888', 'bot'); }
   function logou() {
     setEtapa(null);
     if (pendente) { fechar(); bolha('Pronto, ' + perfil.nome + '! Você está identificado(a). Já vou anotar seu pedido.', 'bot'); return; }   // fechar(): tira a sacola que o login abre sozinho
-    if (cart.length) { fechar(); bolha('Pronto, ' + perfil.nome + '! Você está identificado(a). Confira o resumo e finalize:', 'bot'); cardResumo(); }   // fica no chat
+    if (cart.length) { fechar(); bolha('Pronto, ' + perfil.nome + '! Você está identificado(a).', 'bot'); proximoPasso(); }   // fica no chat
     else bolha('Pronto, ' + perfil.nome + '! Você está identificado(a). O que você vai querer?', 'bot');
   }
   async function fluxoLogin(t, tel) {
@@ -272,8 +285,10 @@
       notas.forEach(n => bolha(n, 'nota'));
       if (!estadoAberto().ok) bolha(estadoAberto().curto + '. Você pode montar a sacola, mas só finaliza com a casa aberta.', 'nota');
       painelSacola();
-      if ((mudou || j.entrega || j.pagamento) && cart.length) cardResumo();   // resumo atualizado a cada mudança
-      if (mudou && cart.length && !clienteLogado() && !pediuTel && !etapa) { pediuTel = true; perguntarTel(); }
+      if ((mudou || j.entrega || j.pagamento) && cart.length) {
+        if (clienteLogado()) proximoPasso();   // pagamento (se faltar) e resumo atualizado
+        else if (!pediuTel && !etapa) { pediuTel = true; perguntarTel(); }   // sem login: primeiro o WhatsApp
+      }
     } catch (e) {
       espera.remove(); bolha('Sem conexão com o atendente. Você pode pedir pelo cardápio normalmente.', 'nota');
     }
@@ -292,8 +307,7 @@
         await fluxoLogin(t, tel);
         if (clienteLogado() && pendente) { const p = pendente; pendente = null; await perguntarIA(p); }
       } else if (cart.length && INTENCAO.test(t)) {
-        if (!clienteLogado()) perguntarTel();
-        else { bolha('Confira o resumo e toque em "Finalizar pedido".', 'bot'); cardResumo(); }
+        proximoPasso();
       } else await perguntarIA(t);
     } catch (e) { console.error(e); bolha('Não consegui agora. Tente de novo.', 'bot'); }
     finally { ocupado = false; $('cbEnv').disabled = false; txt.focus(); }
