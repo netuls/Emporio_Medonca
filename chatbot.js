@@ -133,7 +133,7 @@
   // ── Resumo do pedido dentro do chat + botão Finalizar ──
   let resEl = null;
   const entregasDisp = () => ENTREGAS.filter(e => e === 'Retirada' || (e === 'Entrega' && ENTREGA_ON) || (e === 'Uber Flash' && UBER.ativo));
-  const pagAtual = () => { const d = document.querySelector('#fp div.on, #fp div.sel, #fp div.ativo, #fp div.active'); return (d && d.dataset.f) || pagSel; };
+  const pagAtual = () => pagSel;   // só vale o que o cliente escolheu no chat (a forma que já vem marcada no site não conta)
   function el(tag, cls, t) { const e = document.createElement(tag); if (cls) e.className = cls; if (t != null) e.textContent = t; return e; }
   function linha(a, b, cls) { const l = el('div', 'l' + (cls ? ' ' + cls : '')); l.appendChild(el('span', '', a)); l.appendChild(el('span', '', b)); return l; }
   function botao(rot, fn, cls) { const b = el('button', cls, rot); b.type = 'button'; b.onclick = fn; return b; }
