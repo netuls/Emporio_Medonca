@@ -131,6 +131,8 @@
   function painelSacola() {
     const n = cart.reduce((a, c) => a + c.q, 0), s = $('cbSac');
     s.classList.toggle('on', n > 0); $('cbSacT').textContent = n + (n === 1 ? ' item' : ' itens') + ' · ' + moeda(subtotal());
+    // Sacola esvaziou com um resumo na tela (ex.: pedido finalizado pela sacola depois de pagar o Pix): limpa o resumo antigo e a conversa
+    if (!n && resEl) { resEl.remove(); resEl = null; pagSel = null; historico = []; }
   }
 
   // ── Resumo do pedido dentro do chat + botão Finalizar ──
@@ -167,6 +169,12 @@
     const e = entregasDisp(); if (!entrega && e.length === 1) setEntrega(e[0]);
     const p = pagsDisp(); if (!pagAtual() && p.length === 1) { const d = [...document.querySelectorAll('#fp div')].find(x => x.dataset.f === p[0]); if (d) { d.click(); pagSel = p[0]; } }
   }
+  // Pix: o QR code só aparece na sacola. Então o chat não finaliza; leva o cliente para lá, ele paga e finaliza pela sacola.
+  const precisaQR = () => pagAtual() === 'Pix' && total() > 0;
+  function irPagarPix() {
+    bolha('Para pagar com Pix, abra a sacola: o QR code aparece lá. Pague e depois toque em "Finalizar pedido" na própria sacola.', 'bot');
+    fecharChat(); abrir('pCarrinho');
+  }
   function cardResumo() {
     if (resEl) resEl.remove();
     if (!cart.length) { resEl = null; return; }
@@ -193,8 +201,13 @@
       d.appendChild(r);
     }
     const a = el('div', 'acoes');
-    a.appendChild(botao('✅ Finalizar pedido', confirmar, 'btn'));
-    a.appendChild(botao('Ver sacola', () => { fecharChat(); abrir('pCarrinho'); }, 'cb-chip'));
+    if (precisaQR()) {   // Pix: botão leva para a sacola, onde está o QR code
+      d.appendChild(el('div', 'peq', 'No Pix, o QR code aparece na sacola. Pague por lá e finalize.'));
+      a.appendChild(botao('📱 Pagar com Pix (abrir sacola)', irPagarPix, 'btn'));
+    } else {
+      a.appendChild(botao('✅ Finalizar pedido', confirmar, 'btn'));
+      a.appendChild(botao('Ver sacola', () => { fecharChat(); abrir('pCarrinho'); }, 'cb-chip'));
+    }
     d.appendChild(a);
     msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight;
   }
@@ -205,6 +218,7 @@
     if (!estadoAberto().ok) { bolha(estadoAberto().curto + '. Só dá para finalizar com a casa aberta.', 'nota'); return; }
     autoEscolher();
     if (!entrega || !pagAtual()) { bolha('Antes de finalizar, escolha como receber e como pagar.', 'bot'); cardResumo(); return; }
+    if (precisaQR()) { irPagarPix(); return; }   // Pix nunca finaliza pelo chat: o cliente precisa do QR code da sacola
     ocupado = true; $('cbEnv').disabled = true;
     resEl && resEl.querySelectorAll('button').forEach(b => b.disabled = true);
     const espera = bolha('Finalizando seu pedido…', 'nota');
