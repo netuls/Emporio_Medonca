@@ -6,7 +6,8 @@
 (function () {
   if (typeof prods === 'undefined' || typeof calcGrupos !== 'function' || typeof gruposDe !== 'function') return;
 
-  const ENDPOINT = 'https://emporiomedonca.netlify.app/.netlify/functions/chat-pedido';
+  // Função hospedada na Vercel. Confira se o endereço é exatamente o que a Vercel mostrou depois do deploy.
+  const ENDPOINT = 'https://emporiomedonca.vercel.app/api/chat-pedido';
   const ENTREGAS = ['Entrega', 'Retirada', 'Uber Flash'];
   const num = v => Math.max(1, Math.min(20, Math.floor(+v) || 1));
   const moeda = v => typeof R$ === 'function' ? R$(v) : 'R$ ' + (+v).toFixed(2).replace('.', ',');
