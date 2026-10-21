@@ -5,7 +5,10 @@
 (function () {
   if (typeof prods === 'undefined' || typeof calcGrupos !== 'function' || typeof gruposDe !== 'function') return;
 
-  const ENDPOINT = '/.netlify/functions/chat-pedido';
+  // Site hospedado no GitHub Pages: a função roda na Netlify, então use o endereço completo dela.
+  // Troque SEU-SITE pelo nome do site na Netlify (ex.: https://emporio-chat.netlify.app/.netlify/functions/chat-pedido).
+  // Se algum dia o site inteiro for para a Netlify, pode voltar para '/.netlify/functions/chat-pedido'.
+  const ENDPOINT = 'https://emporiomedonca.netlify.app/.netlify/functions/chat-pedido';
   const ENTREGAS = ['Entrega', 'Retirada', 'Uber Flash'];
   const num = v => Math.max(1, Math.min(20, Math.floor(+v) || 1));
   const moeda = v => typeof R$ === 'function' ? R$(v) : 'R$ ' + (+v).toFixed(2).replace('.', ',');
