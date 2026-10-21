@@ -121,17 +121,53 @@
   }
   function abrirChat() {
     box.classList.add('on'); fab.style.display = 'none';
-    if (!msgs.children.length) bolha('Oi! Me diga o que você quer pedir e como prefere pagar. Eu monto a sacola e você confere antes de finalizar.', 'bot');
+    if (!msgs.children.length) bolha((clienteLogado() ? 'Oi, ' + perfil.nome + '! ' : 'Oi! ') + 'Me diga o que você quer pedir e como prefere pagar. Eu monto a sacola e você confere antes de finalizar.', 'bot');
     painelSacola(); txt.focus();
   }
   function fecharChat() { box.classList.remove('on'); fab.style.display = ''; }
   fab.onclick = abrirChat;
   box.querySelector('.cb-top button').onclick = fecharChat;
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && box.classList.contains('on')) fecharChat(); });
-  $('cbVer').onclick = () => { fecharChat(); abrir('pCarrinho'); };   // sem login, o app.js leva para entrar/cadastrar e depois abre a sacola
+  $('cbVer').onclick = () => { if (!clienteLogado()) { if (etapa === 'nome') bolha('Falta só o seu nome e sobrenome.', 'bot'); else perguntarTel(); return; } fecharChat(); abrir('pCarrinho'); };   // sem login, o app.js leva para entrar/cadastrar e depois abre a sacola
+
+  // ── Login pelo WhatsApp dentro do chat (usa o continuarTel/salvarDados do app.js; o número e o nome NUNCA vão para a IA) ──
+  let etapa = null, pediuTel = false;   // etapa: null · 'tel' (esperando o número) · 'nome' (número novo: esperando nome e sobrenome)
+  const PH = txt.placeholder;
+  function setEtapa(e) {
+    etapa = e; txt.placeholder = e === 'tel' ? '(85) 99999-8888' : e === 'nome' ? 'Nome e sobrenome' : PH;
+    txt.inputMode = e === 'tel' ? 'tel' : 'text'; txt.maxLength = e === 'tel' ? 20 : 400;
+  }
+  const extrairTel = t => { const m = String(t).match(/(?:\+?55[\s-]?)?\(?\d{2}\)?[\s-]?9?\d{4}[\s-]?\d{4}/); if (!m) return null; const d = m[0].replace(/\D/g, '').replace(/^55(?=\d{10,11}$)/, ''); return /^\d{10,11}$/.test(d) ? d : null; };
+  function perguntarTel() { setEtapa('tel'); bolha('Para finalizar, qual é o seu WhatsApp com DDD? Ex.: (85) 99999-8888', 'bot'); }
+  function logou() { setEtapa(null); bolha('Pronto, ' + perfil.nome + '! Você está identificado(a). Abrindo sua sacola…', 'bot'); fecharChat(); }
+  async function fluxoLogin(t, tel) {
+    if (etapa === 'nome') {
+      if (/^(cancelar|voltar)$/i.test(t)) { setEtapa(null); bolha('Tudo bem. Quando quiser finalizar, toque em "Ver sacola e pagar".', 'bot'); return; }
+      const partes = t.replace(/[<>]/g, ' ').trim().split(/\s+/).filter(Boolean);
+      if (partes.length < 2) { bolha('Preciso do nome e do sobrenome. Ex.: Maria Silva', 'bot'); return; }
+      $('cNome').value = partes[0].slice(0, 30); $('cSob').value = partes.slice(1).join(' ').slice(0, 40);
+      await salvarDados();
+      if (clienteLogado()) return logou();
+      bolha('Não consegui criar o cadastro. Tente de novo.', 'bot'); return;
+    }
+    if (clienteLogado()) { bolha('Já estou com o seu cadastro, não precisa informar o número de novo.', 'bot'); return; }
+    if (!tel) { bolha('Esse número parece incompleto. Informe o WhatsApp com DDD. Ex.: (85) 99999-8888', 'bot'); return; }
+    $('cTel').value = tel; lgModo = 'tel';
+    await continuarTel();   // entra se o número já tem cadastro; senão muda para o modo "novo"
+    if (clienteLogado()) return logou();
+    if (lgModo === 'novo') { setEtapa('nome'); bolha('Não encontrei esse número. Para criar seu cadastro, me diga seu nome e sobrenome.', 'bot'); return; }
+    bolha('Não consegui entrar com esse número. Confira e tente de novo.', 'bot');
+  }
 
   async function enviar() {
     const t = txt.value.trim(); if (!t || ocupado) return;
+    const tel = extrairTel(t), soNum = /^[\d\s()+.\-]+$/.test(t);
+    if (etapa === 'nome' || tel || (etapa === 'tel' && soNum && t.replace(/\D/g, '').length >= 6)) {   // telefone e nome ficam aqui, nunca vão para a IA
+      txt.value = ''; ocupado = true; $('cbEnv').disabled = true; bolha(t, 'eu');
+      try { await fluxoLogin(t, tel); } catch (e) { console.error(e); bolha('Não consegui entrar agora. Tente de novo.', 'bot'); }
+      finally { ocupado = false; $('cbEnv').disabled = false; txt.focus(); }
+      return;
+    }
     if (!prods.length) return bolha('O cardápio ainda está carregando. Tente de novo em um instante.', 'nota');
     txt.value = ''; ocupado = true; $('cbEnv').disabled = true; bolha(t, 'eu');
     const espera = bolha('Anotando…', 'nota');
@@ -146,13 +182,14 @@
       const j = await r.json().catch(() => ({}));
       espera.remove();
       if (!r.ok) { bolha(j.erro || 'Não consegui responder agora. Você pode pedir pelo cardápio normalmente.', 'nota'); return; }
-      const { notas } = aplicar(j);
+      const { notas, mudou } = aplicar(j);
       historico.push({ role: 'user', texto: t }); historico.push({ role: 'bot', texto: j.resposta || '' });
       historico = historico.slice(-10);
       if (j.resposta) bolha(j.resposta, 'bot');
       notas.forEach(n => bolha(n, 'nota'));
       if (!estadoAberto().ok) bolha(estadoAberto().curto + '. Você pode montar a sacola, mas só finaliza com a casa aberta.', 'nota');
       painelSacola();
+      if (mudou && cart.length && !clienteLogado() && !pediuTel && !etapa) { pediuTel = true; perguntarTel(); }
     } catch (e) {
       espera.remove(); bolha('Sem conexão com o atendente. Você pode pedir pelo cardápio normalmente.', 'nota');
     } finally { ocupado = false; $('cbEnv').disabled = false; txt.focus(); }
@@ -162,7 +199,7 @@
   // Totem: quando o cliente sai (ou o tempo acaba), apaga a conversa para o próximo cliente começar do zero
   const sairOrig = window.sairTotem;
   if (typeof sairOrig === 'function') window.sairTotem = function () {
-    historico = []; msgs.textContent = ''; txt.value = ''; fecharChat(); painelSacola();
+    historico = []; setEtapa(null); pediuTel = false; msgs.textContent = ''; txt.value = ''; fecharChat(); painelSacola();
     return sairOrig.apply(this, arguments);
   };
   new MutationObserver(painelSacola).observe($('qtd'), { childList: true, characterData: true, subtree: true });
