@@ -1,18 +1,16 @@
 /* Pedido por chat — carregado DEPOIS do app.js, extras.js e pagamentos.js.
    O cliente escreve o que quer; a função da Netlify (Gemini) devolve um pedido em JSON;
    AQUI o site confere tudo de novo (cardápio, estoque, complementos, preço) e só então põe na sacola.
-   A IA nunca grava pedido: quem finaliza (login, endereço, Pix, estoque, número do pedido) continua sendo o finalizar() do app.js. */
+   A IA nunca grava pedido: quem finaliza (login, endereço, Pix, estoque, número do pedido) continua sendo o finalizar() do app.js.
+   NOVO: o chat mostra um cartão de RESUMO do pedido e tem o botão "Finalizar pedido", que chama o finalizar() do app.js. */
 (function () {
   if (typeof prods === 'undefined' || typeof calcGrupos !== 'function' || typeof gruposDe !== 'function') return;
 
-  // Site hospedado no GitHub Pages: a função roda na Netlify, então use o endereço completo dela.
-  // Troque SEU-SITE pelo nome do site na Netlify (ex.: https://emporio-chat.netlify.app/.netlify/functions/chat-pedido).
-  // Se algum dia o site inteiro for para a Netlify, pode voltar para '/.netlify/functions/chat-pedido'.
   const ENDPOINT = 'https://emporiomedonca.netlify.app/.netlify/functions/chat-pedido';
   const ENTREGAS = ['Entrega', 'Retirada', 'Uber Flash'];
   const num = v => Math.max(1, Math.min(20, Math.floor(+v) || 1));
   const moeda = v => typeof R$ === 'function' ? R$(v) : 'R$ ' + (+v).toFixed(2).replace('.', ',');
-  let historico = [], ocupado = false;
+  let historico = [], ocupado = false, pagSel = null;
 
   // ── Cardápio enxuto que vai para a IA (sem dados de cliente) ──
   function cardapio() {
@@ -77,7 +75,7 @@
       const d = [...document.querySelectorAll('#fp div')].find(x => norm(x.dataset.f) === norm(r.pagamento));
       if (!d) notas.push('Não temos a forma de pagamento "' + String(r.pagamento).slice(0, 24) + '".');
       else if (entrega === 'Uber Flash' && d.dataset.f !== 'Pix') notas.push('No Uber Flash só dá para pagar com Pix.');
-      else d.click();
+      else { d.click(); pagSel = d.dataset.f; }
     }
 
     if (mudou) { atualizaSacola(); if ($('pCarrinho').classList.contains('on')) renderCarrinho(); }
@@ -102,6 +100,17 @@
 .cb-in{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line)}
 .cb-in input{flex:1;margin:0;min-width:0}
 .cb-in .btn{padding-left:16px;padding-right:16px}
+.cb-res{align-self:stretch;background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:12px;font-size:13px;line-height:1.45;display:flex;flex-direction:column;gap:4px}
+.cb-res strong{font-size:14px;margin-bottom:2px}
+.cb-res .l{display:flex;justify-content:space-between;gap:10px}
+.cb-res .l span:last-child{white-space:nowrap}
+.cb-res .l.tot{border-top:1px solid var(--line);padding-top:6px;margin-top:4px;font-weight:700}
+.cb-res .det,.cb-res .peq{color:var(--mut);font-size:12px;word-break:break-word}
+.cb-res .perg{margin-top:6px;font-weight:600}
+.cb-res .row{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.cb-chip{padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--tx);font:500 13px/1 inherit;cursor:pointer}
+.cb-chip:disabled,.cb-res .btn:disabled{opacity:.6}
+.cb-res .acoes{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 @media(max-width:560px){#cbFab{bottom:84px}#cbBox{left:0;right:0;bottom:0;width:100%;height:88dvh;border-radius:16px 16px 0 0}}`;
   document.head.appendChild(css);
 
@@ -109,7 +118,7 @@
   const box = document.createElement('div'); box.id = 'cbBox'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', 'Pedir por chat');
   box.innerHTML = '<div class="cb-top"><span>Faça seu pedido por aqui</span><button type="button" aria-label="Fechar">✕</button></div>'
     + '<div class="cb-msgs" id="cbMsgs"></div>'
-    + '<div class="cb-sac" id="cbSac"><span id="cbSacT"></span><button class="btn" type="button" id="cbVer">Ver sacola e pagar</button></div>'
+    + '<div class="cb-sac" id="cbSac"><span id="cbSacT"></span><button class="btn" type="button" id="cbVer">Ver resumo e finalizar</button></div>'
     + '<div class="cb-in"><input id="cbTxt" maxlength="400" placeholder="Ex.: 2 X-Burger sem cebola, 1 suco, pago no Pix" autocomplete="off"><button class="btn" type="button" id="cbEnv">Enviar</button></div>';
   document.body.appendChild(fab); document.body.appendChild(box);
 
@@ -119,16 +128,91 @@
     const n = cart.reduce((a, c) => a + c.q, 0), s = $('cbSac');
     s.classList.toggle('on', n > 0); $('cbSacT').textContent = n + (n === 1 ? ' item' : ' itens') + ' · ' + moeda(subtotal());
   }
+
+  // ── Resumo do pedido dentro do chat + botão Finalizar ──
+  let resEl = null;
+  const entregasDisp = () => ENTREGAS.filter(e => e === 'Retirada' || (e === 'Entrega' && ENTREGA_ON) || (e === 'Uber Flash' && UBER.ativo));
+  const pagAtual = () => { const d = document.querySelector('#fp div.on, #fp div.sel, #fp div.ativo, #fp div.active'); return (d && d.dataset.f) || pagSel; };
+  function el(tag, cls, t) { const e = document.createElement(tag); if (cls) e.className = cls; if (t != null) e.textContent = t; return e; }
+  function linha(a, b, cls) { const l = el('div', 'l' + (cls ? ' ' + cls : '')); l.appendChild(el('span', '', a)); l.appendChild(el('span', '', b)); return l; }
+  function botao(rot, fn, cls) { const b = el('button', cls, rot); b.type = 'button'; b.onclick = fn; return b; }
+  function escolherEntrega(e) { setEntrega(e); cardResumo(); }
+  function escolherPag(f) {
+    const d = [...document.querySelectorAll('#fp div')].find(x => x.dataset.f === f);
+    if (d) { d.click(); pagSel = f; }
+    cardResumo();
+  }
+  const pagsDisp = () => formasPagamento().filter(f => entrega !== 'Uber Flash' || f === 'Pix');
+  function autoEscolher() {   // se só existe uma opção (ex.: só Retirada), já escolhe e não pergunta
+    const e = entregasDisp(); if (!entrega && e.length === 1) setEntrega(e[0]);
+    const p = pagsDisp(); if (!pagAtual() && p.length === 1) { const d = [...document.querySelectorAll('#fp div')].find(x => x.dataset.f === p[0]); if (d) { d.click(); pagSel = p[0]; } }
+  }
+  function cardResumo() {
+    if (resEl) resEl.remove();
+    if (!cart.length) { resEl = null; return; }
+    autoEscolher();
+    const d = el('div', 'cb-res'); resEl = d;
+    d.appendChild(el('strong', '', 'Resumo do pedido'));
+    cart.forEach(c => {
+      d.appendChild(linha(c.q + '× ' + c.nome, moeda(c.preco * c.q)));
+      if (c.det) d.appendChild(el('div', 'det', c.det));
+    });
+    d.appendChild(linha('Subtotal', moeda(subtotal()), 'tot'));
+    const ent = entrega, pag = pagAtual();
+    d.appendChild(linha('Receber', ent || 'escolha abaixo'));
+    if (ent === 'Entrega' || ent === 'Uber Flash') d.appendChild(el('div', 'peq', 'O frete é calculado ao finalizar.'));
+    d.appendChild(linha('Pagamento', pag || 'escolha abaixo'));
+    if (!ent) {
+      d.appendChild(el('div', 'perg', 'Como você prefere receber?'));
+      const r = el('div', 'row'); entregasDisp().forEach(e => r.appendChild(botao(e, () => escolherEntrega(e), 'cb-chip'))); d.appendChild(r);
+    }
+    if (!pag) {
+      d.appendChild(el('div', 'perg', 'Como vai pagar?'));
+      const r = el('div', 'row');
+      formasPagamento().filter(f => entrega !== 'Uber Flash' || f === 'Pix').forEach(f => r.appendChild(botao(f, () => escolherPag(f), 'cb-chip')));
+      d.appendChild(r);
+    }
+    const a = el('div', 'acoes');
+    a.appendChild(botao('✅ Finalizar pedido', confirmar, 'btn'));
+    a.appendChild(botao('Ver sacola', () => { fecharChat(); abrir('pCarrinho'); }, 'cb-chip'));
+    d.appendChild(a);
+    msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight;
+  }
+  async function confirmar() {
+    if (ocupado) return;
+    if (!cart.length) { bolha('Sua sacola está vazia. O que você vai querer?', 'bot'); return; }
+    if (!clienteLogado()) { if (etapa === 'nome') bolha('Falta só o seu nome e sobrenome.', 'bot'); else perguntarTel(); return; }
+    if (!estadoAberto().ok) { bolha(estadoAberto().curto + '. Só dá para finalizar com a casa aberta.', 'nota'); return; }
+    autoEscolher();
+    if (!entrega || !pagAtual()) { bolha('Antes de finalizar, escolha como receber e como pagar.', 'bot'); cardResumo(); return; }
+    ocupado = true; $('cbEnv').disabled = true;
+    resEl && resEl.querySelectorAll('button').forEach(b => b.disabled = true);
+    const espera = bolha('Finalizando seu pedido…', 'nota');
+    try { await finalizar(); } catch (e) { console.error(e); }   // o finalizar() do app.js confere tudo de novo (estoque, endereço, pagamento) e grava o pedido
+    await new Promise(ok => setTimeout(ok, 700));
+    espera.remove();
+    if (!cart.length) {   // sacola esvaziou = pedido feito: o app.js mostra a confirmação / o Pix
+      historico = []; pagSel = null; resEl = null; fecharChat(); painelSacola();
+    } else {
+      bolha('Ainda falta alguma informação (como o endereço) ou algum item mudou. Confira na sacola e finalize por lá.', 'nota');
+      cardResumo();
+    }
+    ocupado = false; $('cbEnv').disabled = false;
+  }
+
   function abrirChat() {
     box.classList.add('on'); fab.style.display = 'none';
-    if (!msgs.children.length) bolha((clienteLogado() ? 'Oi, ' + perfil.nome + '! ' : 'Oi! ') + 'Me diga o que você quer pedir e como prefere pagar. Eu monto a sacola e você confere antes de finalizar.', 'bot');
+    if (!msgs.children.length) bolha((clienteLogado() ? 'Oi, ' + perfil.nome + '! ' : 'Oi! ') + 'Me diga o que você quer pedir e como prefere pagar. Eu monto a sacola, mostro o resumo e você finaliza aqui mesmo.', 'bot');
     painelSacola(); txt.focus();
   }
   function fecharChat() { box.classList.remove('on'); fab.style.display = ''; }
   fab.onclick = abrirChat;
   box.querySelector('.cb-top button').onclick = fecharChat;
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && box.classList.contains('on')) fecharChat(); });
-  $('cbVer').onclick = () => { if (!clienteLogado()) { if (etapa === 'nome') bolha('Falta só o seu nome e sobrenome.', 'bot'); else perguntarTel(); return; } fecharChat(); abrir('pCarrinho'); };   // sem login, o app.js leva para entrar/cadastrar e depois abre a sacola
+  $('cbVer').onclick = () => {
+    if (!clienteLogado()) { if (etapa === 'nome') bolha('Falta só o seu nome e sobrenome.', 'bot'); else perguntarTel(); return; }
+    cardResumo();
+  };
 
   // ── Login pelo WhatsApp dentro do chat (usa o continuarTel/salvarDados do app.js; o número e o nome NUNCA vão para a IA) ──
   let etapa = null, pediuTel = false, pendente = null;   // pendente: parte do pedido que veio na mesma frase do número   // etapa: null · 'tel' (esperando o número) · 'nome' (número novo: esperando nome e sobrenome)
@@ -145,12 +229,12 @@
   function logou() {
     setEtapa(null);
     if (pendente) { fechar(); bolha('Pronto, ' + perfil.nome + '! Você está identificado(a). Já vou anotar seu pedido.', 'bot'); return; }   // fechar(): tira a sacola que o login abre sozinho
-    if (cart.length) { bolha('Pronto, ' + perfil.nome + '! Você está identificado(a). Abrindo sua sacola…', 'bot'); fecharChat(); }
+    if (cart.length) { fechar(); bolha('Pronto, ' + perfil.nome + '! Você está identificado(a). Confira o resumo e finalize:', 'bot'); cardResumo(); }   // fica no chat
     else bolha('Pronto, ' + perfil.nome + '! Você está identificado(a). O que você vai querer?', 'bot');
   }
   async function fluxoLogin(t, tel) {
     if (etapa === 'nome') {
-      if (/^(cancelar|voltar)$/i.test(t)) { setEtapa(null); pendente = null; bolha('Tudo bem. Quando quiser finalizar, toque em "Ver sacola e pagar".', 'bot'); return; }
+      if (/^(cancelar|voltar)$/i.test(t)) { setEtapa(null); pendente = null; bolha('Tudo bem. Quando quiser finalizar, toque em "Ver resumo e finalizar".', 'bot'); return; }
       const partes = t.replace(/[<>]/g, ' ').trim().split(/\s+/).filter(Boolean);
       if (partes.length < 2) { bolha('Preciso do nome e do sobrenome. Ex.: Maria Silva', 'bot'); return; }
       $('cNome').value = partes[0].slice(0, 30); $('cSob').value = partes.slice(1).join(' ').slice(0, 40);
@@ -176,7 +260,7 @@
       const token = await u.getIdToken();
       const r = await fetch(ENDPOINT, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-        body: JSON.stringify({ mensagem: t, historico: historico, loja: NOME, aberto: estadoAberto().ok, cardapio: cardapio(), sacola: sacolaTxt(), pagamentos: formasPagamento() })
+        body: JSON.stringify({ mensagem: t, historico: historico, loja: NOME, aberto: estadoAberto().ok, cardapio: cardapio(), sacola: sacolaTxt(), pagamentos: formasPagamento(), entregas: entregasDisp() })
       });
       const j = await r.json().catch(() => ({}));
       espera.remove();
@@ -188,11 +272,15 @@
       notas.forEach(n => bolha(n, 'nota'));
       if (!estadoAberto().ok) bolha(estadoAberto().curto + '. Você pode montar a sacola, mas só finaliza com a casa aberta.', 'nota');
       painelSacola();
+      if ((mudou || j.entrega || j.pagamento) && cart.length) cardResumo();   // resumo atualizado a cada mudança
       if (mudou && cart.length && !clienteLogado() && !pediuTel && !etapa) { pediuTel = true; perguntarTel(); }
     } catch (e) {
       espera.remove(); bolha('Sem conexão com o atendente. Você pode pedir pelo cardápio normalmente.', 'nota');
     }
   }
+
+  // "finalizar", "fechar pedido", "é isso"... mostra o resumo (quem finaliza de verdade é o botão)
+  const INTENCAO = /^\s*(?:pode\s+)?(?:finalizar|fechar|confirmar|enviar)(?:\s+(?:o\s+)?pedido)?\s*[.!]*\s*$|^\s*(?:é|e|só|so)\s+isso(?:\s+mesmo)?\s*[.!]*\s*$/i;
 
   async function enviar() {
     const t = txt.value.trim(); if (!t || ocupado) return;
@@ -203,6 +291,9 @@
         if (tel) { const resto = semTel(t); if (/[a-zà-ú]{3,}/i.test(resto)) pendente = resto; }   // "quero empada, meu zap é 85..." : guarda o pedido para anotar logo após o login
         await fluxoLogin(t, tel);
         if (clienteLogado() && pendente) { const p = pendente; pendente = null; await perguntarIA(p); }
+      } else if (cart.length && INTENCAO.test(t)) {
+        if (!clienteLogado()) perguntarTel();
+        else { bolha('Confira o resumo e toque em "Finalizar pedido".', 'bot'); cardResumo(); }
       } else await perguntarIA(t);
     } catch (e) { console.error(e); bolha('Não consegui agora. Tente de novo.', 'bot'); }
     finally { ocupado = false; $('cbEnv').disabled = false; txt.focus(); }
@@ -212,7 +303,7 @@
   // Totem: quando o cliente sai (ou o tempo acaba), apaga a conversa para o próximo cliente começar do zero
   const sairOrig = window.sairTotem;
   if (typeof sairOrig === 'function') window.sairTotem = function () {
-    historico = []; setEtapa(null); pediuTel = false; pendente = null; msgs.textContent = ''; txt.value = ''; fecharChat(); painelSacola();
+    historico = []; setEtapa(null); pediuTel = false; pendente = null; pagSel = null; resEl = null; msgs.textContent = ''; txt.value = ''; fecharChat(); painelSacola();
     return sairOrig.apply(this, arguments);
   };
   new MutationObserver(painelSacola).observe($('qtd'), { childList: true, characterData: true, subtree: true });
