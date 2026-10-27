@@ -11,6 +11,20 @@ async function finalizarPedido(id) {
   var HIS = {}, PAGS = [], FORMAS = [];   // PAGS = formas de pagamento marcadas no filtro (vazio = todas)
   var num = function (id, p) { return p.numero ? String(p.numero).padStart(2, '0') : id.slice(0, 6).toUpperCase(); };
   var ts = function (p) { return p.criadoEm && p.criadoEm.toDate ? p.criadoEm.toDate() : null; };
+  var iso = function (d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+  var doIso = function (v, fimDoDia) {   // "2026-01-07" -> Date local (início ou fim do dia); vazio -> null
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || ''); if (!m) return null;
+    return fimDoDia ? new Date(+m[1], +m[2] - 1, +m[3], 23, 59, 59, 999) : new Date(+m[1], +m[2] - 1, +m[3], 0, 0, 0, 0);
+  };
+  window.hisAtalho = function (k) {
+    var h = new Date(), a, b = h;
+    if (k === 'tudo') { $('hDe').value = ''; $('hAte').value = ''; return hisCarregar(); }
+    if (k === 'hoje') a = h;
+    else if (k === 'mes') a = new Date(h.getFullYear(), h.getMonth(), 1);
+    else if (k === 'mesant') { a = new Date(h.getFullYear(), h.getMonth() - 1, 1); b = new Date(h.getFullYear(), h.getMonth(), 0); }
+    else a = new Date(h.getFullYear(), h.getMonth(), h.getDate() - (k - 1));
+    $('hDe').value = iso(a); $('hAte').value = iso(b); hisCarregar();
+  };
   var fd = function (d) { return d ? d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—'; };
 
   function montar() {
@@ -22,6 +36,10 @@ async function finalizarPedido(id) {
       + '<p class="rd">Pedidos finalizados (entregues) e cancelados. <b>Atenção:</b> ao excluir um pedido ele também sai dos Relatórios e do total gasto em Clientes. Exporte o CSV antes de apagar, se quiser guardar os dados.</p>'
       + '<div class="rk" id="hk"></div>'
       + '<div class="rctl" style="margin:16px 0 0"><button class="btn" onclick="hisTodosPagos()">✔ Todos pagaram</button><span style="color:var(--mut);font-size:13px">Marca como pagos todos os pedidos da lista abaixo (respeita busca e filtros). Cancelados não entram.</span></div>'
+      + '<div class="rctl" style="margin:16px 0 0">'
+      + '<label style="margin:0;display:flex;align-items:center;gap:6px">De <input type="date" id="hDe" style="margin:0;width:auto" onchange="hisCarregar()"></label>'
+      + '<label style="margin:0;display:flex;align-items:center;gap:6px">Até <input type="date" id="hAte" style="margin:0;width:auto" onchange="hisCarregar()"></label>'
+      + '<button class="btn o" onclick="hisAtalho(\'hoje\')">Hoje</button><button class="btn o" onclick="hisAtalho(7)">Últimos 7 dias</button><button class="btn o" onclick="hisAtalho(\'mes\')">Este mês</button><button class="btn o" onclick="hisAtalho(\'mesant\')">Mês passado</button><button class="btn o" onclick="hisAtalho(\'tudo\')">Todo o período</button></div>'
       + '<div class="rctl" style="margin:16px 0"><input id="hq" placeholder="Buscar nº, cliente ou telefone" oninput="hisRender()" style="margin:0">'
       + '<select id="hf" onchange="hisRender()"><option value="all">Todos</option><option value="Entregue">Entregues</option><option value="Cancelado">Cancelados</option></select>'
       + '<details id="hpw" class="hpw"><summary id="hps">Todas as formas de pagamento</summary><div id="hpl" class="hpl"></div></details>'
@@ -59,8 +77,14 @@ async function finalizarPedido(id) {
 
   window.hisCarregar = async function () {
     try {
-      var s = await db.collection('pedidos').where('status', 'in', ['Entregue', 'Cancelado']).limit(1000).get();
-      HIS = {}; s.docs.forEach(function (d) { HIS[d.id] = d.data(); });
+      var de = doIso($('hDe').value, false), ate = doIso($('hAte').value, true), s;
+      if (de && ate && de > ate) return alert('A data inicial não pode ser depois da data final.');
+      if (de || ate) {   // com datas: consulta só pelo período (sem índice novo) e filtra o status aqui
+        s = await db.collection('pedidos').where('criadoEm', '>=', de || new Date(2000, 0, 1)).where('criadoEm', '<=', ate || new Date(2100, 0, 1)).orderBy('criadoEm', 'desc').limit(2000).get();
+      } else {
+        s = await db.collection('pedidos').where('status', 'in', ['Entregue', 'Cancelado']).limit(1000).get();
+      }
+      HIS = {}; s.docs.forEach(function (d) { var p = d.data(); if (p.status === 'Entregue' || p.status === 'Cancelado') HIS[d.id] = p; });
     } catch (e) { return alert('Erro ao carregar o histórico: ' + e.message); }
     hisRender();
   };
