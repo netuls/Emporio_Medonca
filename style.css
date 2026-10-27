@@ -252,3 +252,18 @@ body:not(.adm) .crumb,body:not(.adm) .filbtn,body:not(.adm) .ord{display:none!im
   .loja .card .im{aspect-ratio:16/10}
   .catbar button{padding:12px 20px;font-size:15px}
 }
+
+/* ═════════ Painel admin: MENU NA LATERAL ═════════ */
+body.adm{--hh:64px;--sbw:220px}   /* --hh = altura do topo (ajustada por script); --sbw = largura do menu */
+@media(min-width:900px){
+  body.adm .tabs{position:fixed;top:var(--hh);left:0;bottom:0;width:var(--sbw);max-width:none;margin:0;padding:16px 12px;box-sizing:border-box;flex-direction:column;justify-content:flex-start;gap:4px;background:#fff;border-right:1px solid var(--line);border-radius:0;overflow-y:auto;z-index:15}
+  body.adm .tabs button{flex:none;width:100%;text-align:left;padding:12px 14px;min-height:44px;border-radius:10px;color:#3A3A42;font-weight:600}
+  body.adm .tabs button:hover{background:#F2F2F5}
+  body.adm .tabs button.on{background:var(--ac);color:#fff;box-shadow:none}
+  body.adm #app{margin-left:var(--sbw)}
+}
+@media(max-width:899px){   /* celular/tablet: o menu vira uma barra rolável fixa embaixo do topo */
+  body.adm .tabs{position:sticky;top:var(--hh);z-index:15;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  body.adm .tabs::-webkit-scrollbar{display:none}
+  body.adm .tabs button{flex:0 0 auto;white-space:nowrap;padding:10px 18px}
+}
