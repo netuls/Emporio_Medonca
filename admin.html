@@ -76,6 +76,11 @@
 <script src="catalogo-admin.js"></script>
 <script src="fotos-admin.js"></script> 
 <script src="historico-admin.js"></script>
+<script src="fiado-admin.js"></script>
+<script>
+/* Menu lateral: mede a altura do topo para o menu começar logo abaixo dele */
+(function(){var h=document.querySelector("body.adm > header");function s(){if(h)document.body.style.setProperty("--hh",h.offsetHeight+"px");}s();addEventListener("resize",s);addEventListener("load",s);if(window.ResizeObserver&&h)new ResizeObserver(s).observe(h);})();
+</script>
 <script>
 async function reiniciarContagem() {
   if (!confirm('Reiniciar a contagem? O próximo pedido será o nº 01.')) return;
