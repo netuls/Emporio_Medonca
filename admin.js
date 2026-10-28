@@ -771,16 +771,11 @@ function abrirVendaManual() {
     <input id="vmNm" placeholder="Nome do item" style="${VM_IN}">
     <div id="vmCmp"></div>
     <div id="vmPv" style="font-size:12px;color:var(--mut);margin:0 0 10px"></div>
-    <div style="display:flex;gap:8px"><div style="flex:1"><label style="font-size:12px;color:var(--mut)">Observação (opcional)</label><input id="vmTm" maxlength="120" placeholder="Ex.: sem cebola" style="${VM_IN}"></div>
-    <div style="width:70px"><label style="font-size:12px;color:var(--mut)">Qtd</label><input id="vmQ" type="number" min="1" value="1" inputmode="numeric" style="${VM_IN}"></div>
-    <div style="width:100px"><label style="font-size:12px;color:var(--mut)">Preço (R$)</label><input id="vmPr" oninput="vmPv()" type="number" step="0.01" min="0" inputmode="decimal" style="${VM_IN}"></div></div>
+    <div style="display:flex;gap:8px"><div style="width:90px"><label style="font-size:12px;color:var(--mut)">Qtd</label><input id="vmQ" type="number" min="1" value="1" inputmode="numeric" style="${VM_IN}"></div>
+    <div style="flex:1"><label style="font-size:12px;color:var(--mut)">Preço (R$)</label><input id="vmPr" oninput="vmPv()" type="number" step="0.01" min="0" inputmode="decimal" style="${VM_IN}"></div></div>
     <button class="btn o" style="width:100%;margin-bottom:10px" onclick="vmAdd()">+ Adicionar item</button>
     <div id="vmL" style="margin-bottom:12px"></div>
-    <label style="font-size:12px;color:var(--mut)">Taxa de entrega (R$) · deixe vazio se não teve entrega</label>
-    ${(CFG.bairros || []).length ? `<select id="vmBr" onchange="vmBairro()" style="${VM_IN}"><option value="">— Bairro (preenche a taxa) —</option>${(CFG.bairros || []).slice().sort((x, y) => x.nome.localeCompare(y.nome, 'pt-BR')).map(b => `<option value="${esc(b.nome)}" data-taxa="${+b.taxa || 0}">${esc(b.nome)} · ${(+b.taxa) ? R$(+b.taxa) : 'grátis'}</option>`).join('')}</select>` : ''}
-    <input id="vmFr" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0,00" oninput="vmRender()" style="${VM_IN}">
     <label style="font-size:12px;color:var(--mut)">Forma de pagamento</label><select id="vmPg" onchange="vmPgSel()" style="${VM_IN}"><option value="">— Selecione —</option>${pags.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('')}<option value="__outra">Outra (digitar)…</option></select><input id="vmPg2" maxlength="40" placeholder="Nome da forma de pagamento" style="${VM_IN};display:none">
-    <label style="font-size:12px;color:var(--mut)">Quando foi pago?</label><select id="vmQp" style="${VM_IN}"><option value="">— não informar —</option><option>Na entrega</option><option>Na retirada</option><option value="Antecipado">Pago antes (Pix / transferência)</option></select>
     <label style="font-size:12px;color:var(--mut)">Data da venda</label><input id="vmD" type="date" value="${hoje}" max="${hoje}" style="${VM_IN}">
     <div style="display:flex;gap:8px;margin-top:6px"><button class="btn o" style="flex:1" onclick="fecharVendaManual()">Cancelar</button><button id="vmS" class="btn" style="flex:1" onclick="salvarVendaManual()">Registrar venda</button></div></div>`;
   document.body.appendChild(d); vmProd(); vmRender(); vmCarregarClientes();
@@ -833,10 +828,10 @@ function vmAdd() {
   if (!(q >= 1)) return alert('Quantidade inválida.');
   if (!(preco >= 0)) return alert('Informe o preço.');
   const c = vmCalc(p, false); if (c.erro) return alert(c.erro);
-  const extra = vmR2(c.extra), obs = $('vmTm').value.trim().slice(0, 120);
-  const det = [c.det, obs ? 'Obs.: ' + obs : ''].filter(Boolean).join(' · ');
+  const extra = vmR2(c.extra);
+  const det = [c.det].filter(Boolean).join(' · ');
   VM.push({ id: p ? id : 'avulso', nome, tam: 'Único', ...(det ? { det } : {}), q, ...(extra ? { extra } : {}), preco: vmR2(preco + extra) });
-  if (!p) $('vmNm').value = ''; $('vmTm').value = ''; $('vmQ').value = 1; VMS = {}; vmCmpRender(); vmRender();
+  if (!p) $('vmNm').value = ''; $('vmQ').value = 1; VMS = {}; vmCmpRender(); vmRender();
 }
 // ── Complementos na venda manual (mesmos grupos do Catálogo) ──
 const vmR2 = v => Math.round(v * 100) / 100;
@@ -901,13 +896,10 @@ function vmPv() {   // prévia do valor do item com os complementos
 }
 function vmPgSel() { $('vmPg2').style.display = $('vmPg').value === '__outra' ? 'block' : 'none'; }
 function vmDel(i) { VM.splice(i, 1); vmRender(); }
-function vmBairro() { const o = $('vmBr').selectedOptions[0]; $('vmFr').value = o && o.value ? (+o.dataset.taxa || 0) : ''; vmRender(); }
-const vmFrete = () => { const el = $('vmFr'), v = el ? parseFloat(String(el.value).replace(',', '.')) : 0; return v > 0 ? Math.round(v * 100) / 100 : 0; };
 function vmRender() {
-  const sub = VM.reduce((x, i) => x + i.preco * i.q, 0), fr = vmFrete(), tot = Math.round((sub + fr) * 100) / 100;
-  $('vmL').innerHTML = VM.length || fr
+  const sub = VM.reduce((x, i) => x + i.preco * i.q, 0), tot = Math.round(sub * 100) / 100;
+  $('vmL').innerHTML = VM.length
     ? VM.map((i, k) => `<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:13px"><span style="flex:1">${i.q}× ${esc(i.nome)} ${i.det ? ' <small>(' + esc(i.det) + ')</small>' : ''}</span><b>${R$(i.preco * i.q)}</b><button class="ab r" onclick="vmDel(${k})">✕</button></div>`).join('')
-      + (fr ? `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--line);padding-top:8px;margin-top:6px;font-size:13px"><span>Taxa de entrega</span><b>${R$(fr)}</b></div>` : '')
       + `<div style="display:flex;justify-content:space-between;border-top:1px solid var(--line);padding-top:8px;margin-top:6px"><span>Total</span><b style="font-size:16px">${R$(tot)}</b></div>`
     : '<p style="color:var(--mut);font-size:12px;margin:0">Nenhum item adicionado.</p>';
 }
@@ -916,11 +908,11 @@ async function salvarVendaManual() {
   const pag = ($('vmPg').value === '__outra' ? $('vmPg2').value : $('vmPg').value).trim().slice(0, 40); if (!pag) return alert('Escolha a forma de pagamento.');
   const nome = $('vmN').value.trim().slice(0, 80) || 'Cliente (venda manual)', tel = $('vmT').value.replace(/\D/g, '');
   const dt = $('vmD').value ? new Date($('vmD').value + 'T12:00:00') : new Date();
-  const sub = Math.round(VM.reduce((x, i) => x + i.preco * i.q, 0) * 100) / 100, frete = vmFrete(), total = Math.round((sub + frete) * 100) / 100, btn = $('vmS'); btn.disabled = true;
+  const sub = Math.round(VM.reduce((x, i) => x + i.preco * i.q, 0) * 100) / 100, frete = 0, total = sub, btn = $('vmS'); btn.disabled = true;
   let ref;
   try {
     // cria como "Novo" com estoque liberado e passa para "Entregue" pela mesma rotina dos pedidos 
-    ref = await db.collection('pedidos').add({ cliente: { nome, tel }, itens: VM.map(i => ({ ...i })), pagamento: pag, ...($('vmQp').value ? { pagamentoQuando: $('vmQp').value } : {}), subtotal: sub, total, frete, status: 'Novo', origem: 'Manual', criadoEm: firebase.firestore.Timestamp.fromDate(dt) });
+    ref = await db.collection('pedidos').add({ cliente: { nome, tel }, itens: VM.map(i => ({ ...i })), pagamento: pag, pagamentoQuando: 'Na retirada', subtotal: sub, total, frete, status: 'Novo', origem: 'Manual', criadoEm: firebase.firestore.Timestamp.fromDate(dt) });
     await mudarStatus(ref.id, 'Entregue');
     fecharVendaManual(); avisoAdm('Venda registrada ✔');
   } catch (e) {
