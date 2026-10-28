@@ -740,7 +740,7 @@ async function testarAvisos() {
 
 // ── Venda manual: cliente que comprou fora do site ──
 // Cria um pedido já ENTREGUE (entra na receita e nos relatórios) e pode ser de um item do cardápio ou avulso.
-let VM = [], VMS = {}, VMX = [], VMGR = [];   // VMS = complementos escolhidos do item atual; VMX = complementos avulsos digitados; VMGR = grupos do item atual
+let VM = [], VMS = {}, VMGR = [];   // VMS = complementos escolhidos do item atual; VMGR = grupos do item atual
 const VM_PAG = ['Pix', 'Dinheiro', 'Cartão de crédito', 'Cartão de débito'];
 const VM_IN = 'width:100%;box-sizing:border-box;padding:10px;margin:0 0 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--tx);font-size:14px';
 function criarBotaoVenda() {
@@ -750,7 +750,7 @@ function criarBotaoVenda() {
   tb.parentNode.insertBefore(b, tb);
 }
 function abrirVendaManual() {
-  fecharVendaManual(); VM = []; VMS = {}; VMX = [];
+  fecharVendaManual(); VM = []; VMS = {};
   const h = new Date(), hoje = new Date(h - h.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   // formas de pagamento: as cadastradas no painel (ou Pix/Cartão/Dinheiro) + as comuns + Fiado + as já usadas em pedidos
   const cfgPag = Array.isArray(CFG.pagamentos) ? CFG.pagamentos.filter(Boolean) : [], vistos = new Set(), pags = [];
@@ -770,9 +770,7 @@ function abrirVendaManual() {
     <select id="vmP" onchange="vmProd()" style="${VM_IN}"><option value="">— Item avulso (fora do catálogo) —</option>${prods.map(([id, p]) => `<option value="${esc(id)}">${esc(p.nome)}</option>`).join('')}</select>
     <input id="vmNm" placeholder="Nome do item" style="${VM_IN}">
     <div id="vmCmp"></div>
-    <label style="font-size:12px;color:var(--mut)">Complementos avulsos (opcional) · nome e valor, vale para qualquer item</label>
-    <div style="display:flex;gap:8px"><input id="vmCn" maxlength="60" placeholder="Ex.: Bacon extra" style="${VM_IN};flex:1"><input id="vmCp" type="number" step="0.01" min="0" inputmode="decimal" placeholder="R$" style="${VM_IN};width:90px"><button type="button" class="btn o" style="height:40px;padding:0 14px;margin:0" onclick="vmCxAdd()">+</button></div>
-    <div id="vmCl"></div><div id="vmPv" style="font-size:12px;color:var(--mut);margin:0 0 10px"></div>
+    <div id="vmPv" style="font-size:12px;color:var(--mut);margin:0 0 10px"></div>
     <div style="display:flex;gap:8px"><div style="flex:1"><label style="font-size:12px;color:var(--mut)">Observação (opcional)</label><input id="vmTm" maxlength="120" placeholder="Ex.: sem cebola" style="${VM_IN}"></div>
     <div style="width:70px"><label style="font-size:12px;color:var(--mut)">Qtd</label><input id="vmQ" type="number" min="1" value="1" inputmode="numeric" style="${VM_IN}"></div>
     <div style="width:100px"><label style="font-size:12px;color:var(--mut)">Preço (R$)</label><input id="vmPr" oninput="vmPv()" type="number" step="0.01" min="0" inputmode="decimal" style="${VM_IN}"></div></div>
@@ -785,7 +783,7 @@ function abrirVendaManual() {
     <label style="font-size:12px;color:var(--mut)">Quando foi pago?</label><select id="vmQp" style="${VM_IN}"><option value="">— não informar —</option><option>Na entrega</option><option>Na retirada</option><option value="Antecipado">Pago antes (Pix / transferência)</option></select>
     <label style="font-size:12px;color:var(--mut)">Data da venda</label><input id="vmD" type="date" value="${hoje}" max="${hoje}" style="${VM_IN}">
     <div style="display:flex;gap:8px;margin-top:6px"><button class="btn o" style="flex:1" onclick="fecharVendaManual()">Cancelar</button><button id="vmS" class="btn" style="flex:1" onclick="salvarVendaManual()">Registrar venda</button></div></div>`;
-  document.body.appendChild(d); vmProd(); vmCxRender(); vmRender(); vmCarregarClientes();
+  document.body.appendChild(d); vmProd(); vmRender(); vmCarregarClientes();
 }
 // Clientes conhecidos: TODOS os cadastrados no site + todos que já fizeram pedido (sem repetir). Ao escolher, nome e WhatsApp vêm juntos.
 let VMC = [], VML = [];
@@ -835,12 +833,12 @@ function vmAdd() {
   if (!(q >= 1)) return alert('Quantidade inválida.');
   if (!(preco >= 0)) return alert('Informe o preço.');
   const c = vmCalc(p, false); if (c.erro) return alert(c.erro);
-  const extra = vmR2(c.extra + VMX.reduce((a, x) => a + x.preco, 0)), obs = $('vmTm').value.trim().slice(0, 120);
-  const det = [c.det, ...VMX.map(x => '+ ' + x.nome), obs ? 'Obs.: ' + obs : ''].filter(Boolean).join(' · ');
+  const extra = vmR2(c.extra), obs = $('vmTm').value.trim().slice(0, 120);
+  const det = [c.det, obs ? 'Obs.: ' + obs : ''].filter(Boolean).join(' · ');
   VM.push({ id: p ? id : 'avulso', nome, tam: 'Único', ...(det ? { det } : {}), q, ...(extra ? { extra } : {}), preco: vmR2(preco + extra) });
-  if (!p) $('vmNm').value = ''; $('vmTm').value = ''; $('vmQ').value = 1; VMS = {}; VMX = []; vmCmpRender(); vmCxRender(); vmRender();
+  if (!p) $('vmNm').value = ''; $('vmTm').value = ''; $('vmQ').value = 1; VMS = {}; vmCmpRender(); vmRender();
 }
-// ── Complementos na venda manual (mesmos grupos do Catálogo + complementos avulsos digitados) ──
+// ── Complementos na venda manual (mesmos grupos do Catálogo) ──
 const vmR2 = v => Math.round(v * 100) / 100;
 function vmGrupos(p) {   // grupos ligados ao item (config/loja → complementos, pelos ids em p.grupos); itens antigos usam os do próprio item ou os adicionais
   if (!p) return [];
@@ -896,20 +894,9 @@ function vmStep(gi, oi, d) {
   } else { s[oi] = n; if (!n) delete s[oi]; }
   vmCmpRender();
 }
-function vmCxAdd() {
-  const n = $('vmCn').value.trim().slice(0, 60), pr = parseFloat(String($('vmCp').value).replace(',', '.')) || 0;
-  if (!n) return alert('Digite o nome do complemento.'); if (pr < 0) return alert('Valor inválido.');
-  VMX.push({ nome: n, preco: vmR2(pr) }); $('vmCn').value = ''; $('vmCp').value = ''; vmCxRender();
-}
-function vmCxDel(i) { VMX.splice(i, 1); vmCxRender(); }
-function vmCxRender() {
-  const l = $('vmCl'); if (!l) return;
-  l.innerHTML = VMX.map((x, i) => `<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:13px"><span style="flex:1">+ ${esc(x.nome)}</span><b>${x.preco ? R$(x.preco) : 'grátis'}</b><button type="button" class="ab r" onclick="vmCxDel(${i})">✕</button></div>`).join('');
-  vmPv();
-}
 function vmPv() {   // prévia do valor do item com os complementos
   const el = $('vmPv'); if (!el) return;
-  const c = vmCalc(PROD[$('vmP').value], true), ex = vmR2(c.extra + VMX.reduce((a, x) => a + x.preco, 0)), base = parseFloat(String($('vmPr').value).replace(',', '.')) || 0;
+  const c = vmCalc(PROD[$('vmP').value], true), ex = vmR2(c.extra), base = parseFloat(String($('vmPr').value).replace(',', '.')) || 0;
   el.textContent = ex > 0 ? 'Complementos: + ' + R$(ex) + ' · cada unidade fica ' + R$(base + ex) : '';
 }
 function vmPgSel() { $('vmPg2').style.display = $('vmPg').value === '__outra' ? 'block' : 'none'; }
