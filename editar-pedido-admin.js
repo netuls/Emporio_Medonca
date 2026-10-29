@@ -1,5 +1,5 @@
 /* Editar pedido no painel admin — carregue DEPOIS do admin.js (e do admin-extras.js).
-   Cria o botão "✏ Editar" em cada pedido em andamento. Dá para mudar:
+   Cria o botão "✏ Editar" nos pedidos em andamento e também na aba Histórico (pedidos Entregues; cancelados não). Dá para mudar:
    - forma de pagamento (o "quando paga" e o status Pix/Novo se ajustam sozinhos);
    - quantidade de cada item e remover item;
    - complementos / observação de cada item (texto livre + atalhos com as opções do cardápio) e o valor dos complementos;
@@ -27,6 +27,22 @@
     });
   }
   if (tb) { new MutationObserver(marcar).observe(tb, { childList: true }); marcar(); }
+
+  // Aba Histórico: o botão entra nas linhas de pedidos Entregues (a tabela é refeita a cada filtro)
+  function marcarHis(hb) {
+    hb.querySelectorAll('tr:not([data-ed])').forEach(tr => {
+      tr.dataset.ed = 1;
+      const m = tr.innerHTML.match(/hisImprimir\('([^']+)'/); if (!m) return;
+      if (/Cancelado/.test((tr.querySelector('[data-l="Status"]') || {}).textContent || '')) return;
+      const cel = tr.querySelector('td.acoes'); if (!cel) return;
+      const b = document.createElement('button'); b.className = 'ab b'; b.textContent = '✏ Editar'; b.onclick = () => editarPedido(m[1], true);
+      cel.insertBefore(b, cel.firstChild);
+    });
+  }
+  const espera = setInterval(() => {
+    const hb = $('hb'); if (!hb) return; clearInterval(espera);
+    new MutationObserver(() => marcarHis(hb)).observe(hb, { childList: true }); marcarHis(hb);
+  }, 500);
 
   // ---------- formas de pagamento disponíveis ----------
   function listaPagamentos(atual) {
@@ -64,7 +80,7 @@
   }
 
   function pinta() {
-    const p = PED[ED.id], lista = listaPagamentos(p.pagamento);
+    const p = ED.p, lista = listaPagamentos(p.pagamento);
     const atualOk = lista.some(x => x.toLowerCase() === String(p.pagamento || '').toLowerCase());
     $('edBody').innerHTML =
       '<div style="font-size:13px;color:var(--mut);margin-bottom:12px">Pedido nº ' + nPed(ED.id) + ' · ' + esc((p.cliente || {}).nome || '') + ' · status: ' + esc(p.status) + '</div>'
@@ -77,11 +93,15 @@
     edTot();
   }
 
-  function editarPedido(id) {
-    const p = PED[id]; if (!p) return;
-    if (['Entregue', 'Cancelado'].includes(p.status)) return alert('Só dá para editar pedidos em andamento.');
+  async function editarPedido(id, doHistorico) {
+    let p = PED[id];
+    if (!p || doHistorico) {   // pedido do Histórico: busca a versão mais recente no banco
+      try { const d = await db.collection('pedidos').doc(id).get(); p = d.exists ? d.data() : null; } catch (e) { return alert('Não foi possível abrir o pedido: ' + e.message); }
+    }
+    if (!p) return alert('Pedido não encontrado.');
+    if (p.status === 'Cancelado') return alert('Pedido cancelado não pode ser editado.');
     fechar();
-    ED = { id, itens: (p.itens || []).map(it => ({ ...it, _q: +it.q || 1, _extra: r2(it.extra || 0), _base: r2((+it.preco || 0) - (+it.extra || 0)), _det: it.det || '', _qOrig: +it.q || 1 })) };
+    ED = { id, p, itens: (p.itens || []).map(it => ({ ...it, _q: +it.q || 1, _extra: r2(it.extra || 0), _base: r2((+it.preco || 0) - (+it.extra || 0)), _det: it.det || '', _qOrig: +it.q || 1 })) };
     const m = document.createElement('div'); m.id = 'edPed'; m.className = 'ov on'; m.style.cssText = 'justify-content:center;align-items:center;z-index:9998';
     m.innerHTML = '<div class="pn" style="height:auto;max-width:520px;max-height:92vh;overflow:auto;border:1px solid var(--line)"><h3 class="pt" style="margin-bottom:12px">EDITAR PEDIDO</h3><div id="edBody"></div>'
       + '<div style="display:flex;gap:8px;margin-top:14px"><button class="btn" id="edSalvar" style="flex:1" onclick="edSalvar()">Salvar alterações</button><button class="btn o" style="flex:1" onclick="edFechar()">Cancelar</button></div></div>';
@@ -107,13 +127,13 @@
   window.edTot = () => {
     if (!ED) return; ler(); let sub = 0;
     ED.itens.forEach((it, i) => { const un = r2(it._base + it._extra), li = r2(un * it._q); sub += li; $('edU' + i).textContent = R$(un); $('edL' + i).textContent = R$(li); });
-    ED.sub = r2(sub); ED.total = r2(sub + (PED[ED.id].frete || 0)); $('edSub').textContent = R$(ED.sub); $('edTot').textContent = R$(ED.total);
+    ED.sub = r2(sub); ED.total = r2(sub + (ED.p.frete || 0)); $('edSub').textContent = R$(ED.sub); $('edTot').textContent = R$(ED.total);
   };
 
   // ---------- salvar ----------
   window.edSalvar = async () => {
     ler(); edTot();
-    const antigo = PED[ED.id]; if (!antigo) return;
+    const antigo = ED.p; if (!antigo) return;
     const pag = ($('edPg').value === '__outra' ? $('edPg2').value : $('edPg').value).trim().slice(0, 40); if (!pag) return alert('Escolha a forma de pagamento.');
     const itens = ED.itens.map(it => {
       const o = { id: it.id, nome: it.nome, preco: r2(it._base + it._extra), tam: it.tam || 'Único', q: it._q };
@@ -134,7 +154,7 @@
       await db.runTransaction(async t => {
         const ref = db.collection('pedidos').doc(ED.id), s = await t.get(ref);
         if (!s.exists) throw new Error('Este pedido não existe mais.');
-        if (['Entregue', 'Cancelado'].includes(s.data().status)) throw new Error('O pedido já foi finalizado ou cancelado.');
+        if (s.data().status === 'Cancelado') throw new Error('O pedido foi cancelado.');
         const docs = await Promise.all(ids.map(id => t.get(db.collection('produtos').doc(id))));
         docs.forEach((d, k) => {
           if (!d.exists) return; const p = d.data(); if (!temEst(p)) return;
@@ -144,7 +164,7 @@
         });
         t.update(ref, dados);
       });
-      fechar(); avisoAdm('Pedido atualizado ✔');
+      fechar(); avisoAdm('Pedido atualizado ✔'); if (typeof hisCarregar === 'function' && $('tH') && $('tH').style.display === 'block') hisCarregar();
     } catch (e) { b.disabled = false; b.textContent = 'Salvar alterações'; alert('Não foi possível salvar: ' + e.message); }
   };
 })();
