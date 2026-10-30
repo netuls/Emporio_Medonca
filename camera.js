@@ -28,9 +28,9 @@
     }
     throw ultimo;
   }
-  function parar() { tok++; if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } if (box) { box.remove(); box = null; } }
+  function parar() { if (window.gravacaoCamera) window.gravacaoCamera.parar(); tok++; if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } if (box) { box.remove(); box = null; } }
   async function ligar(c) {
-    parar(); if (!c || !c.ativo) return;
+    parar(); if (!c || !(c.ativo || c.gravar)) return;
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return console.info('Câmera: o navegador não permite (precisa de https).');
     const meu = tok;
     try {
@@ -42,7 +42,9 @@
       const v = document.createElement('video'); v.muted = true; v.playsInline = true; v.autoplay = true; v.srcObject = st; box.appendChild(v);
       const tx = String(c.texto || '').trim().slice(0, 40);
       if (tx) { const sp = document.createElement('span'); sp.textContent = tx; box.appendChild(sp); }
+      if (!c.ativo) box.style.cssText += ';left:-9999px;top:0;width:160px;height:120px';   // só grava: imagem fora da tela
       document.body.appendChild(box); v.play().catch(() => {});
+      if (c.gravar && window.gravacaoCamera) window.gravacaoCamera.iniciar(st, v, c);
       const tr = st.getVideoTracks()[0]; if (tr) tr.onended = parar;   // câmera desconectada
     } catch (e) { console.info('Câmera não iniciada:', e.name, e.message); }   // permissão negada ou sem câmera: o site segue normal
   }
