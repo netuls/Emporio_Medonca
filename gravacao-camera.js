@@ -3,8 +3,8 @@
    Ligar/desligar: painel → Câmera do totem → "Gravar quando alguém aparecer". Carregado antes do camera.js. */
 (function () {
   const MAXMB = 1500, FIM = 3000, MAXCLIP = 120000;   // teto de espaço; para após 3 s sem movimento (pessoa saiu); trecho máx. de 2 min
-  let idb = null, loop = null, limp = null, rec = null, parts = [], ini = 0, ult = 0, hits = 0, prev = null, cfg = {}, pill = null;
-  const abrir = () => idb || (idb = new Promise((ok, er) => { const r = indexedDB.open('emporio-gravacoes', 1); r.onupgradeneeded = () => r.result.createObjectStore('c', { keyPath: 'id', autoIncrement: true }); r.onsuccess = () => ok(r.result); r.onerror = () => er(r.error); }));
+  let vref = null, razao = 0, idb = null, loop = null, limp = null, rec = null, parts = [], ini = 0, ult = 0, hits = 0, prev = null, cfg = {}, pill = null;
+  const abrir = () => idb || (idb = new Promise((ok, er) => { const r = indexedDB.open('emporio-gravacoes', 1); r.onupgradeneeded = () => r.result.createObjectStore('c', { keyPath: 'id', autoIncrement: true }); r.onsuccess = () => { if (r.result.objectStoreNames.contains('c')) return ok(r.result); r.result.close(); const x = indexedDB.deleteDatabase('emporio-gravacoes'); x.onsuccess = x.onerror = () => { idb = null; abrir().then(ok, er); }; }; r.onerror = () => er(r.error); }));
   const tx = async (m, f) => { const d = await abrir(); return new Promise((ok, er) => { const t = d.transaction('c', m), q = f(t.objectStore('c')); t.oncomplete = () => ok(q && q.result); t.onerror = () => er(t.error); }); };
   const listar = () => tx('readonly', s => s.getAll()).then(a => (a || []).sort((x, y) => y.ini - x.ini));
   const horas = () => Math.min(72, Math.max(1, +cfg.horas || 24));
@@ -26,16 +26,16 @@
     const tipo = ['video/webm;codecs=vp8', 'video/webm', 'video/mp4'].find(t => MediaRecorder.isTypeSupported(t)), t0 = Date.now(); parts = []; ini = t0;
     let r; try { r = rec = new MediaRecorder(st, { mimeType: tipo, videoBitsPerSecond: 400000 }); } catch (e) { rec = null; return; }
     r.ondataavailable = e => { if (e.data && e.data.size) parts.push(e.data); };
-    r.onstop = () => { const b = new Blob(parts, { type: r.mimeType || 'video/webm' }); parts = []; if (b.size > 2000) tx('readwrite', s => s.add({ ini: t0, dur: Date.now() - t0, blob: b })).catch(() => {}); };
-    r.start(1000); ponto(true);
+    r.onstop = () => { const b = new Blob(parts, { type: r.mimeType || 'video/webm' }); parts = []; if (b.size > 2000) tx('readwrite', s => s.add({ ini: t0, dur: Date.now() - t0, blob: b })).then(() => console.info('Gravação: trecho salvo', Math.round(b.size / 1024) + ' KB')).catch(e => console.warn('Gravação: não salvou', e)); };
+    r.start(1000); ponto(true); console.info('Gravação: começou');
   }
   function fim() { if (rec && rec.state !== 'inactive') rec.stop(); rec = null; hits = 0; ponto(false); }
   function parar() { clearInterval(loop); clearInterval(limp); loop = limp = null; fim(); aviso(false); prev = null; }
 
   function iniciar(st, video, c) {
-    parar(); cfg = c || {}; if (!cfg.gravar || !window.MediaRecorder) return;
+    parar(); cfg = c || {}; vref = video; if (!cfg.gravar || !window.MediaRecorder) return console.info('Gravação: desligada na configuração');
     const cv = document.createElement('canvas'); cv.width = 64; cv.height = 48; const x = cv.getContext('2d', { willReadFrequently: true });
-    aviso(true); limpar(); limp = setInterval(limpar, 600000);
+    aviso(true); console.info('Gravação: ativa, aguardando movimento'); limpar(); limp = setInterval(limpar, 600000);
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     loop = setInterval(() => {
       if (video.readyState < 2) return;
@@ -43,14 +43,14 @@
       for (let i = 0; i < 3072; i++) g[i] = d[i * 4] * .3 + d[i * 4 + 1] * .59 + d[i * 4 + 2] * .11;
       if (prev) {
         let n = 0; for (let i = 0; i < 3072; i++) if (Math.abs(g[i] - prev[i]) > 25) n++;
-        if (n / 3072 > .02) { ult = Date.now(); hits++; } else hits = Math.max(0, hits - 1);   // movimento precisa se repetir 2x (evita ruído)
+        razao = n / 3072; if (razao > .02) { ult = Date.now(); hits++; } else hits = Math.max(0, hits - 1);   // movimento precisa se repetir 2x (evita ruído)
         if (!rec && hits >= 2) gravar(st);
         if (rec && (Date.now() - ult > FIM || Date.now() - ini > MAXCLIP)) fim();
       }
       prev = g;
     }, 400);
   }
-  window.gravacaoCamera = { iniciar, parar };
+  window.gravacaoCamera = { iniciar, parar, estado: () => ({ ativa: !!loop, gravando: !!rec, movimentoAgora: +razao.toFixed(3), limite: .02, hits, videoPronto: vref ? vref.readyState : null }), listar: () => listar().then(a => a.map(c => ({ ini: new Date(c.ini).toLocaleString('pt-BR'), seg: Math.round(c.dur / 1000), kb: Math.round(c.blob.size / 1024) }))) };
 
   /* Painel admin: lista os trechos gravados NESTE navegador (abra o painel no computador do totem). */
   if (!document.getElementById('cam-sec')) return;
