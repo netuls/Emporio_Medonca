@@ -2,7 +2,7 @@
    Os trechos ficam só neste computador (IndexedDB) e são apagados após o prazo (config/loja.camera.horas, padrão 24 h).
    Ligar/desligar: painel → Câmera do totem → "Gravar quando alguém aparecer". Carregado antes do camera.js. */
 (function () {
-  const MAXMB = 1500, FIM = 10000, MAXCLIP = 120000;   // teto de espaço; para após 10 s sem movimento; trecho máx. de 2 min
+  const MAXMB = 1500, FIM = 3000, MAXCLIP = 120000;   // teto de espaço; para após 3 s sem movimento (pessoa saiu); trecho máx. de 2 min
   let idb = null, loop = null, limp = null, rec = null, parts = [], ini = 0, ult = 0, hits = 0, prev = null, cfg = {}, pill = null;
   const abrir = () => idb || (idb = new Promise((ok, er) => { const r = indexedDB.open('emporio-gravacoes', 1); r.onupgradeneeded = () => r.result.createObjectStore('c', { keyPath: 'id', autoIncrement: true }); r.onsuccess = () => ok(r.result); r.onerror = () => er(r.error); }));
   const tx = async (m, f) => { const d = await abrir(); return new Promise((ok, er) => { const t = d.transaction('c', m), q = f(t.objectStore('c')); t.oncomplete = () => ok(q && q.result); t.onerror = () => er(t.error); }); };
@@ -24,7 +24,7 @@
 
   function gravar(st) {
     const tipo = ['video/webm;codecs=vp8', 'video/webm', 'video/mp4'].find(t => MediaRecorder.isTypeSupported(t)), t0 = Date.now(); parts = []; ini = t0;
-    let r; try { r = rec = new MediaRecorder(st, { mimeType: tipo, videoBitsPerSecond: 600000 }); } catch (e) { rec = null; return; }
+    let r; try { r = rec = new MediaRecorder(st, { mimeType: tipo, videoBitsPerSecond: 400000 }); } catch (e) { rec = null; return; }
     r.ondataavailable = e => { if (e.data && e.data.size) parts.push(e.data); };
     r.onstop = () => { const b = new Blob(parts, { type: r.mimeType || 'video/webm' }); parts = []; if (b.size > 2000) tx('readwrite', s => s.add({ ini: t0, dur: Date.now() - t0, blob: b })).catch(() => {}); };
     r.start(1000); ponto(true);
@@ -57,7 +57,12 @@
   const fmt = ms => new Date(ms).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const sec = document.createElement('div'); sec.className = 'sec'; sec.id = 'grav-sec';
   sec.innerHTML = '<h2 class="pt">GRAVAÇÕES DO TOTEM</h2><p class="rd">Trechos gravados quando alguém aparece na câmera. Ficam só neste computador e são apagados sozinhos após o prazo. Para ver, abra o painel neste mesmo computador e navegador do totem.</p><button class="btn" id="gravTudo">Apagar tudo agora</button><div id="gravL" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-top:12px"></div>';
-  document.getElementById('cam-sec').insertAdjacentElement('afterend', sec);
+  // Aba própria "Gravações" no menu lateral (mesmo padrão das abas Histórico e Catálogo)
+  const tabs = document.querySelector('.tabs'), bt = document.createElement('button'), pg = document.createElement('div');
+  bt.id = 'tbV'; bt.textContent = 'Gravações'; bt.onclick = () => aba('V'); tabs.insertBefore(bt, document.getElementById('tbR'));
+  pg.id = 'tV'; pg.style.display = 'none'; pg.appendChild(sec); document.getElementById('tC').insertAdjacentElement('afterend', pg);
+  const abaOrig = window.aba;
+  window.aba = function (t) { abaOrig(t); const on = t === 'V'; pg.style.display = on ? 'block' : 'none'; bt.classList.toggle('on', on); if (on) desenhar(); };
   let urls = [];
   async function desenhar() {
     urls.forEach(URL.revokeObjectURL); urls = []; const L = document.getElementById('gravL'), a = await listar().catch(() => []);
@@ -67,5 +72,5 @@
       d.querySelector('button').onclick = async () => { await tx('readwrite', s => s.delete(c.id)); desenhar(); }; L.appendChild(d); });
   }
   document.getElementById('gravTudo').onclick = async () => { if (confirm('Apagar todas as gravações deste computador?')) { await tx('readwrite', s => s.clear()); desenhar(); } };
-  desenhar(); setInterval(desenhar, 30000);
+  desenhar(); setInterval(() => { if (pg.style.display !== 'none' && ![...sec.querySelectorAll('video')].some(v => !v.paused)) desenhar(); }, 30000);   // não atualiza enquanto um vídeo toca
 })();
