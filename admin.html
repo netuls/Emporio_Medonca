@@ -40,6 +40,8 @@
 <div class="sec" id="cam-sec"><h2 class="pt">CÂMERA DO TOTEM</h2>
 <p class="rd">Mostra a imagem da webcam do computador num canto da tela do cliente, para ele se ver (efeito espelho). Quando o cliente finaliza o pedido, uma foto é registrada e aparece em <b>Fotos dos clientes</b> no painel por 24 horas; depois é apagada. O site avisa o cliente antes de finalizar. O navegador pede permissão da câmera na primeira vez; toque em <b>Permitir</b> no computador do totem.</p>
 <label>Câmera na tela do cliente</label><select id="camA"><option value="0">Desligada</option><option value="1">Ligada</option></select>
+<label>Gravar quando alguém aparecer</label><select id="camG"><option value="0">Desligado</option><option value="1">Ligado</option></select>
+<label>Guardar gravações por</label><select id="camH"><option value="12">12 horas</option><option value="24" selected>24 horas</option><option value="48">48 horas</option></select>
 <label>Posição na tela</label><select id="camP"><option value="be">Canto inferior esquerdo</option><option value="bd">Canto inferior direito</option><option value="te">Canto superior esquerdo</option><option value="td">Canto superior direito</option></select>
 <label>Tamanho</label><select id="camT"><option value="p">Pequeno</option><option value="m">Médio</option><option value="g">Grande</option></select>
 <label>Texto abaixo da imagem (opcional)</label><input id="camX" maxlength="40" placeholder="Sorria! Ambiente com câmera">
@@ -74,7 +76,7 @@
 <div class="toast" id="toast"></div><script src="config.js"></script><script src="pix.js"></script><script src="admin.js"></script>
 <script src="admin-extras.js"></script>
 <script src="catalogo-admin.js"></script>
-<script src="fotos-admin.js"></script> 
+<script src="fotos-admin.js"></script><script src="gravacao-camera.js"></script> 
 <script src="historico-admin.js"></script>
 <script src="fiado-admin.js"></script>
 <script src="editar-pedido-admin.js"></script>
@@ -166,7 +168,7 @@ body.adm .sec.sec-dentro>h2{font-size:15px}
 (function(){
   var iniciado=false;
   window.camSalvar=async function(){
-    var c={ativo:document.getElementById('camA').value==='1',pos:document.getElementById('camP').value,tam:document.getElementById('camT').value,texto:document.getElementById('camX').value.trim().slice(0,40)};
+    var c={ativo:document.getElementById('camA').value==='1',gravar:document.getElementById('camG').value==='1',horas:+document.getElementById('camH').value,pos:document.getElementById('camP').value,tam:document.getElementById('camT').value,texto:document.getElementById('camX').value.trim().slice(0,40)};
     try{ await db.collection('config').doc('loja').set({camera:c},{merge:true}); avisoAdm(c.ativo?'Câmera ligada':'Câmera desligada'); }
     catch(e){ alert('Erro ao salvar: '+e.message); }
   };
@@ -174,7 +176,7 @@ body.adm .sec.sec-dentro>h2{font-size:15px}
     if(!u||u.email!==LOJA.adminEmail||iniciado) return; iniciado=true;
     db.collection('config').doc('loja').onSnapshot(function(sn){
       var c=(sn.data()||{}).camera||{};
-      document.getElementById('camA').value=c.ativo?'1':'0'; document.getElementById('camP').value=c.pos||'be';
+      document.getElementById('camA').value=c.ativo?'1':'0'; document.getElementById('camG').value=c.gravar?'1':'0'; document.getElementById('camH').value=String(c.horas||24); document.getElementById('camP').value=c.pos||'be';
       document.getElementById('camT').value=c.tam||'m'; document.getElementById('camX').value=c.texto||'';
     });
   });
