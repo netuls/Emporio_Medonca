@@ -65,12 +65,32 @@
   window.aba = function (t) { abaOrig(t); const on = t === 'V'; pg.style.display = on ? 'block' : 'none'; bt.classList.toggle('on', on); if (on) desenhar(); };
   let urls = [];
   async function desenhar() {
-    urls.forEach(URL.revokeObjectURL); urls = []; const L = document.getElementById('gravL'), a = await listar().catch(() => []);
+    urls.forEach(u => URL.revokeObjectURL(u)); urls = []; const L = document.getElementById('gravL'), a = await listar().catch(() => []);
     L.innerHTML = a.length ? '' : '<p class="rd">Nenhuma gravação neste computador.</p>';
-    a.forEach(c => { const u = URL.createObjectURL(c.blob); urls.push(u); const d = document.createElement('div'); d.style.cssText = 'border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card)';
-      d.innerHTML = '<video controls preload="metadata" src="' + u + '" style="display:block;width:100%"></video><div style="padding:8px 10px;font-size:12px"><b>' + fmt(c.ini) + '</b> · ' + Math.round(c.dur / 1000) + ' s · ' + (c.blob.size / 1048576).toFixed(1) + ' MB<br><a class="ab" href="' + u + '" download="gravacao-' + c.ini + '.webm">Baixar</a> <button class="ab r">Apagar</button></div>';
-      d.querySelector('button').onclick = async () => { await tx('readwrite', s => s.delete(c.id)); desenhar(); }; L.appendChild(d); });
+    a.forEach(c => {
+      const u = URL.createObjectURL(c.blob); urls.push(u);
+      const d = document.createElement('div'); d.style.cssText = 'border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card)';
+      d.innerHTML = '<div class="slot"></div><div style="padding:8px 10px;font-size:12px"><b>' + fmt(c.ini) + '</b> · ' + Math.round(c.dur / 1000) + ' s · ' + (c.blob.size / 1048576).toFixed(1) + ' MB<br><a class="ab" href="' + u + '" download="gravacao-' + c.ini + '.webm">Baixar</a> <button class="ab r">Apagar</button></div>';
+      // O <video> só é criado ao clicar em ▶ (o Chrome limita ~75 players ao mesmo tempo). Só 1 vídeo fica aberto por vez.
+      const slot = d.querySelector('.slot');
+      const mostrarBotao = () => {
+        slot.innerHTML = ''; slot._fechar = null;
+        const p = document.createElement('div');
+        p.style.cssText = 'display:flex;align-items:center;justify-content:center;aspect-ratio:4/3;background:#111;color:#fff;font-size:34px;cursor:pointer';
+        p.textContent = '▶';
+        p.onclick = () => {
+          L.querySelectorAll('.slot').forEach(s => { if (s._fechar) s._fechar(); });   // fecha o vídeo que estava aberto
+          const v = document.createElement('video'); v.controls = true; v.autoplay = true; v.playsInline = true; v.src = u; v.style.cssText = 'display:block;width:100%';
+          slot.innerHTML = ''; slot.appendChild(v);
+          slot._fechar = () => { v.pause(); v.removeAttribute('src'); v.load(); mostrarBotao(); };
+        };
+        slot.appendChild(p);
+      };
+      mostrarBotao();
+      d.querySelector('button').onclick = async () => { await tx('readwrite', s => s.delete(c.id)); desenhar(); };
+      L.appendChild(d);
+    });
   }
   document.getElementById('gravTudo').onclick = async () => { if (confirm('Apagar todas as gravações deste computador?')) { await tx('readwrite', s => s.clear()); desenhar(); } };
-  desenhar(); setInterval(() => { if (pg.style.display !== 'none' && ![...sec.querySelectorAll('video')].some(v => !v.paused)) desenhar(); }, 30000);   // não atualiza enquanto um vídeo toca
+  desenhar(); setInterval(() => { if (pg.style.display !== 'none' && !sec.querySelector('video')) desenhar(); }, 30000);   // não atualiza enquanto algum vídeo está aberto
 })();
